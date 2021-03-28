@@ -5,5 +5,4 @@ authors = ["Oleksii-Kshenskyi <oleksii.kshenskyi@outlook.com>"]
 edition = "2018"
 
 [dependencies]
-amethyst = { version = "0.15.3", features = ["tiles"] }
-amethyst_rendy = {version = "0.15.3", features = ["vulkan"]}
+bevy = "0.4.0"
