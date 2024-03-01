@@ -1,8 +1,8 @@
 [package]
 name = "runger"
 version = "0.0.1"
-authors = ["Oleksii-Kshenskyi <oleksii.kshenskyi@outlook.com>"]
+authors = ["Oleksii-Kshenskyi <archalessus@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bevy = "0.4.0"
+bevy = "0.13.0"
