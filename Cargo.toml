@@ -4,5 +4,12 @@ version = "0.0.1"
 authors = ["Oleksii-Kshenskyi <archalessus@gmail.com>"]
 edition = "2018"
 
+[profile.dev]
+opt-level=1
+
+[profile.release]
+opt-level=3
+debug=false
+
 [dependencies]
 bevy = "0.13.0"
