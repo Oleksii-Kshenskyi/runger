@@ -94,6 +94,12 @@ fn spawn_board(
     }
 }
 
+// TODO: The player bundle should feature:
+//  -- The direction the player is facing;
+
+//  TODO: there should be an update system that advances the board by 1 turn;
+// -- This could include stuff like players choosing which actions to take,
+// -- players moving, turning, etc.
 fn spawn_players(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
