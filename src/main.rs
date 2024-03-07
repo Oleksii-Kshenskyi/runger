@@ -1,4 +1,5 @@
 mod engine;
+mod simulation;
 
 use bevy::prelude::*;
 
