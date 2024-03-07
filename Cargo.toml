@@ -13,3 +13,4 @@ debug=false
 
 [dependencies]
 bevy = "0.13.0"
+rand = "0.8.5"
