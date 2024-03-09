@@ -16,5 +16,5 @@ pub fn default_tile_margin() -> f32 {
 pub fn default_player_count() -> u32 {
     ((DEFAULT_GRID_SIZE * DEFAULT_GRID_SIZE) as f32 * percent(10)) as u32
 }
-// TODO: config should include a constant that determines the amount of turns a single generation takes
-// TODO: should also include a constant that defines the speed (number of frames) of a single turn.
+pub const TURNS_PER_GEN: u32 = 300;
+pub const SECONDS_PER_TURN: f64 = 0.5;
