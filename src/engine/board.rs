@@ -116,9 +116,6 @@ fn spawn_board(
     }
 }
 
-//  TODO: there should be an update system that advances the board by 1 turn;
-// -- This could include stuff like players choosing which actions to take,
-// -- players moving, turning, etc.
 fn spawn_players(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -163,6 +160,8 @@ fn spawn_players(
     }
 }
 
+// TODO: Try to refactor turning a player into just using rotation on the transform
+//       instead of recreating the mesh all the time.
 fn turn_player(
     direction: &mut FacingDirection,
     mesh: &mut Mesh2dHandle,
@@ -173,6 +172,9 @@ fn turn_player(
     *mesh = triangle_facing(direction, meshes);
 }
 
+// TODO: Think how to collapse this monster into a more pleasant looking function.
+//       Maybe extract a few of these phases into separate functions
+// TODO: In general, reflect whether it's possible to further refactor this code
 fn move_player(
     is_facing: &FacingDirection,
     tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,

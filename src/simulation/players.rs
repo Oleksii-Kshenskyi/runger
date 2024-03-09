@@ -4,7 +4,6 @@ use bevy::prelude::*;
 
 use std::error::Error;
 
-// TODO: Each turn, the player decides (either randomly or based on its "brain") which action from the types of actions available to take
 #[derive(Component, Debug)]
 pub struct Player;
 
