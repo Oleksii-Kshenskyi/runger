@@ -175,7 +175,7 @@ fn turn_player(
 
 fn move_player(
     is_facing: &FacingDirection,
-    tile_query: &mut Query<(&mut OccupantType, &BoardPosition), With<BoardTile>>,
+    tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,
     player_pos: &mut BoardPosition,
     player_transform: &mut Transform,
     board_state: &Res<BoardState>,
@@ -199,11 +199,10 @@ fn move_player(
     };
     let allowed_to_move = within_bounds
         && maybe_new_entity.is_some()
-        && *tile_query
+        && **tile_query
             .get(*maybe_new_entity.unwrap())
             .as_ref()
             .unwrap()
-            .0
             == OccupantType::Empty; // if new (destination) tile's occupant type is empty
     if !allowed_to_move {
         return;
@@ -212,13 +211,13 @@ fn move_player(
     let new_tile_id = *maybe_new_entity.unwrap();
     let old_tile_id = *board_state.tiles.get(player_pos).unwrap();
     // extract old tile's old occupant type (Player(Entity))
-    let old_tile_occ = { *tile_query.get_mut(old_tile_id).unwrap().0 };
+    let old_tile_occ = { *tile_query.get_mut(old_tile_id).unwrap() };
     // new tile occ = Player(Entity)
-    if let Ok((mut new_tile_occ, _)) = tile_query.get_mut(new_tile_id) {
+    if let Ok(mut new_tile_occ) = tile_query.get_mut(new_tile_id) {
         *new_tile_occ = old_tile_occ;
     }
     // old tile occ = empty
-    if let Ok((mut old_tile_occ, _)) = tile_query.get_mut(old_tile_id) {
+    if let Ok(mut old_tile_occ) = tile_query.get_mut(old_tile_id) {
         *old_tile_occ = OccupantType::Empty;
     }
     // redraw player (transform)
@@ -242,7 +241,7 @@ fn advance_players(
     mut meshes: ResMut<Assets<Mesh>>,
     mut turn: ResMut<Turn>,
     board_state: Res<BoardState>,
-    mut tile_query: Query<(&mut OccupantType, &BoardPosition), With<BoardTile>>,
+    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
     mut player_query: Query<
         (
             &mut BoardPosition,

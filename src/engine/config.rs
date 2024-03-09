@@ -17,4 +17,4 @@ pub fn default_player_count() -> u32 {
     ((DEFAULT_GRID_SIZE * DEFAULT_GRID_SIZE) as f32 * percent(10)) as u32
 }
 pub const TURNS_PER_GEN: u32 = 300;
-pub const SECONDS_PER_TURN: f64 = 0.5;
+pub const SECONDS_PER_TURN: f64 = 0.1;
