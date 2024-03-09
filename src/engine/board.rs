@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use std::collections::HashMap;
 
+use crate::engine::common::*;
 use crate::engine::config::*;
 use crate::simulation::players::position_after_turn;
 use crate::simulation::players::FacingDirection;
@@ -11,31 +12,6 @@ use crate::simulation::players::PlayerActionType;
 use super::common::triangle_facing;
 use super::random::random_board_pos;
 use super::random::random_player_action;
-
-#[derive(Component, Debug, PartialEq, Eq, Hash, Copy, Clone)]
-pub struct BoardPosition {
-    x: u32,
-    y: u32,
-}
-
-#[derive(Component, Debug, PartialEq, Eq, Hash, Copy, Clone)]
-pub enum OccupantType {
-    Empty,
-    Player(Entity),
-}
-
-#[derive(Component, Debug, Copy, Clone)]
-pub struct BoardTile;
-
-impl BoardPosition {
-    pub fn new(x: u32, y: u32) -> Self {
-        Self { x, y }
-    }
-
-    pub fn from_tuple((x, y): (u32, u32)) -> Self {
-        Self { x, y }
-    }
-}
 
 #[derive(Bundle)]
 pub struct BoardTileBundle {
@@ -49,11 +25,6 @@ pub struct PlayerBundle {
     pub board_pos: BoardPosition,
     pub is_facing: FacingDirection,
     pub sprite: MaterialMesh2dBundle<ColorMaterial>,
-}
-
-#[derive(Resource)]
-struct BoardState {
-    tiles: HashMap<BoardPosition, Entity>,
 }
 
 #[derive(Resource)]
@@ -128,6 +99,9 @@ fn spawn_players(
             let random_pos = BoardPosition::from_tuple(random_board_pos());
             let tile_entity = *board_state.tiles.get(&random_pos).unwrap();
             if let Ok(mut occupant) = query.get_mut(tile_entity) {
+                if *occupant != OccupantType::Empty {
+                    continue;
+                }
                 let triangle = Mesh2dHandle(meshes.add(Triangle2d::new(
                     Vec2::new(-default_entity_size() / 2., default_entity_size() / 2.),
                     Vec2::new(default_entity_size() / 2., 0.),
@@ -172,9 +146,6 @@ fn turn_player(
     *mesh = triangle_facing(direction, meshes);
 }
 
-// TODO: Think how to collapse this monster into a more pleasant looking function.
-//       Maybe extract a few of these phases into separate functions
-// TODO: In general, reflect whether it's possible to further refactor this code
 fn move_player(
     is_facing: &FacingDirection,
     tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,
@@ -182,35 +153,14 @@ fn move_player(
     player_transform: &mut Transform,
     board_state: &Res<BoardState>,
 ) {
-    let new_pos: (i32, i32) = match (&player_pos, is_facing) {
-        (BoardPosition { x, y }, FacingDirection::Up) => (*x as i32, (*y + 1) as i32),
-        (BoardPosition { x, y }, FacingDirection::Right) => ((*x + 1) as i32, *y as i32),
-        (BoardPosition { x, y }, FacingDirection::Down) => (*x as i32, (*y - 1) as i32),
-        (BoardPosition { x, y }, FacingDirection::Left) => ((*x - 1) as i32, *y as i32),
-    };
-    let within_bounds = new_pos.0 >= 0
-        && new_pos.1 >= 0
-        && new_pos.0 < DEFAULT_GRID_SIZE as i32
-        && new_pos.1 < DEFAULT_GRID_SIZE as i32;
-    let maybe_new_entity = if within_bounds {
-        board_state
-            .tiles
-            .get(&BoardPosition::new(new_pos.0 as u32, new_pos.1 as u32))
-    } else {
-        None
-    };
-    let allowed_to_move = within_bounds
-        && maybe_new_entity.is_some()
-        && **tile_query
-            .get(*maybe_new_entity.unwrap())
-            .as_ref()
-            .unwrap()
-            == OccupantType::Empty; // if new (destination) tile's occupant type is empty
-    if !allowed_to_move {
+    let new_pos: (i32, i32) = predict_move_pos(player_pos, is_facing);
+    let maybe_new_tile = tile_entity_by_pos(new_pos, board_state);
+
+    if maybe_new_tile.is_none() || !player_can_move_here(maybe_new_tile.unwrap(), tile_query) {
         return;
     }
 
-    let new_tile_id = *maybe_new_entity.unwrap();
+    let new_tile_id = *maybe_new_tile.unwrap();
     let old_tile_id = *board_state.tiles.get(player_pos).unwrap();
     // extract old tile's old occupant type (Player(Entity))
     let old_tile_occ = { *tile_query.get_mut(old_tile_id).unwrap() };
@@ -222,7 +172,7 @@ fn move_player(
     if let Ok(mut old_tile_occ) = tile_query.get_mut(old_tile_id) {
         *old_tile_occ = OccupantType::Empty;
     }
-    // redraw player (transform)
+    // move player (transform)
     *player_transform = Transform::from_xyz(
         grid_to_world(new_pos.0 as u32),
         grid_to_world(new_pos.1 as u32),
