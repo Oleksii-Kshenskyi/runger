@@ -1,17 +1,10 @@
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
+
 use std::collections::HashMap;
+use std::f32::consts::PI;
 
-use crate::engine::common::*;
-use crate::engine::config::*;
-use crate::simulation::players::position_after_turn;
-use crate::simulation::players::FacingDirection;
-use crate::simulation::players::Player;
-use crate::simulation::players::PlayerActionType;
-
-use super::common::triangle_facing;
-use super::random::random_board_pos;
-use super::random::random_player_action;
+use crate::{engine::common::*, engine::config::*, engine::random::*, simulation::players::*};
 
 #[derive(Bundle)]
 pub struct BoardTileBundle {
@@ -103,9 +96,9 @@ fn spawn_players(
                     continue;
                 }
                 let triangle = Mesh2dHandle(meshes.add(Triangle2d::new(
-                    Vec2::new(-default_entity_size() / 2., default_entity_size() / 2.),
-                    Vec2::new(default_entity_size() / 2., 0.),
+                    Vec2::new(0., default_entity_size() / 2.),
                     Vec2::new(-default_entity_size() / 2., -default_entity_size() / 2.),
+                    Vec2::new(default_entity_size() / 2., -default_entity_size() / 2.),
                 )));
                 *occupant = OccupantType::Player(
                     commands
@@ -120,7 +113,8 @@ fn spawn_players(
                                         grid_to_world(random_pos.x),
                                         grid_to_world(random_pos.y),
                                         0.1,
-                                    ),
+                                    )
+                                    .with_rotation(Quat::from_rotation_z(-PI / 2.0)),
                                     ..default()
                                 },
                             },
@@ -132,18 +126,6 @@ fn spawn_players(
             }
         }
     }
-}
-
-// TODO: Try to refactor turning a player into just using rotation on the transform
-//       instead of recreating the mesh all the time.
-fn turn_player(
-    direction: &mut FacingDirection,
-    mesh: &mut Mesh2dHandle,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    turn_direction: FacingDirection,
-) {
-    *direction = position_after_turn(direction, turn_direction).unwrap();
-    *mesh = triangle_facing(direction, meshes);
 }
 
 fn move_player(
@@ -173,7 +155,7 @@ fn move_player(
         *old_tile_occ = OccupantType::Empty;
     }
     // move player (transform)
-    *player_transform = Transform::from_xyz(
+    player_transform.translation = Vec3::new(
         grid_to_world(new_pos.0 as u32),
         grid_to_world(new_pos.1 as u32),
         0.1,
@@ -190,21 +172,15 @@ fn simulation_ongoing(turn: Res<Turn>) -> bool {
 }
 
 fn advance_players(
-    mut meshes: ResMut<Assets<Mesh>>,
     mut turn: ResMut<Turn>,
     board_state: Res<BoardState>,
     mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
     mut player_query: Query<
-        (
-            &mut BoardPosition,
-            &mut FacingDirection,
-            &mut Mesh2dHandle,
-            &mut Transform,
-        ),
+        (&mut BoardPosition, &mut FacingDirection, &mut Transform),
         With<Player>,
     >,
 ) {
-    for (mut pos, mut direction, mut mesh, mut transform) in player_query.iter_mut() {
+    for (mut pos, mut direction, mut transform) in player_query.iter_mut() {
         match random_player_action() {
             PlayerActionType::Idle => (),
             PlayerActionType::Move => move_player(
@@ -214,18 +190,12 @@ fn advance_players(
                 &mut transform,
                 &board_state,
             ),
-            PlayerActionType::Turn(FacingDirection::Right) => turn_player(
-                &mut direction,
-                &mut mesh,
-                &mut meshes,
-                FacingDirection::Right,
-            ),
-            PlayerActionType::Turn(FacingDirection::Left) => turn_player(
-                &mut direction,
-                &mut mesh,
-                &mut meshes,
-                FacingDirection::Left,
-            ),
+            PlayerActionType::Turn(FacingDirection::Right) => {
+                turn_right(&mut direction, &mut transform)
+            }
+            PlayerActionType::Turn(FacingDirection::Left) => {
+                turn_left(&mut direction, &mut transform)
+            }
             act => unreachable!(
                 "Incorrect action type while trying to advance players: {:#?}",
                 act

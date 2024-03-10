@@ -1,11 +1,9 @@
-use std::{collections::HashMap, error::Error, fmt::Display};
+use std::{collections::HashMap, error::Error, f32::consts::PI, fmt::Display};
 
-use bevy::{prelude::*, sprite::Mesh2dHandle};
+use bevy::prelude::*;
 
 use crate::engine::config::*;
-use crate::simulation::players::FacingDirection;
-
-use super::config::default_entity_size;
+use crate::simulation::players::{position_after_turn, FacingDirection};
 
 #[derive(Debug)]
 pub struct RungerError {
@@ -25,34 +23,6 @@ impl Display for RungerError {
 }
 
 impl Error for RungerError {}
-
-pub fn triangle_facing(
-    direction: &FacingDirection,
-    meshes: &mut ResMut<Assets<Mesh>>,
-) -> Mesh2dHandle {
-    match *direction {
-        FacingDirection::Up => Mesh2dHandle(meshes.add(Triangle2d::new(
-            Vec2::new(0., default_entity_size() / 2.),
-            Vec2::new(-default_entity_size() / 2., -default_entity_size() / 2.),
-            Vec2::new(default_entity_size() / 2., -default_entity_size() / 2.),
-        ))),
-        FacingDirection::Right => Mesh2dHandle(meshes.add(Triangle2d::new(
-            Vec2::new(-default_entity_size() / 2., default_entity_size() / 2.),
-            Vec2::new(default_entity_size() / 2., 0.),
-            Vec2::new(-default_entity_size() / 2., -default_entity_size() / 2.),
-        ))),
-        FacingDirection::Down => Mesh2dHandle(meshes.add(Triangle2d::new(
-            Vec2::new(-default_entity_size() / 2., default_entity_size() / 2.),
-            Vec2::new(default_entity_size() / 2., default_entity_size() / 2.),
-            Vec2::new(0., -default_entity_size() / 2.),
-        ))),
-        FacingDirection::Left => Mesh2dHandle(meshes.add(Triangle2d::new(
-            Vec2::new(-default_entity_size() / 2., 0.),
-            Vec2::new(default_entity_size() / 2., default_entity_size() / 2.),
-            Vec2::new(default_entity_size() / 2., -default_entity_size() / 2.),
-        ))),
-    }
-}
 
 #[derive(Component, Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub struct BoardPosition {
@@ -83,6 +53,16 @@ pub struct BoardState {
 
 #[derive(Component, Debug, Copy, Clone)]
 pub struct BoardTile;
+
+pub fn turn_right(is_facing: &mut FacingDirection, transform: &mut Transform) {
+    *is_facing = position_after_turn(is_facing, FacingDirection::Right).unwrap();
+    transform.rotate_z(-PI / 2.);
+}
+
+pub fn turn_left(is_facing: &mut FacingDirection, transform: &mut Transform) {
+    *is_facing = position_after_turn(is_facing, FacingDirection::Left).unwrap();
+    transform.rotate_z(PI / 2.);
+}
 
 pub fn predict_move_pos(player_pos: &BoardPosition, is_facing: &FacingDirection) -> (i32, i32) {
     match (&player_pos, is_facing) {
