@@ -8,6 +8,9 @@ use std::error::Error;
 pub struct Player;
 
 #[derive(Component, Debug)]
+pub struct Food;
+
+#[derive(Component, Debug)]
 pub enum FacingDirection {
     Up,
     Left,
@@ -20,6 +23,36 @@ pub enum PlayerActionType {
     Idle,
     Move,
     Turn(FacingDirection),
+    Eat,
+}
+
+#[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum PlayerStatus {
+    Alive,
+    DedPepega,
+}
+
+#[derive(Component, Debug)]
+pub struct Hunger {
+    pub value: u32
+}
+
+impl Hunger {
+    pub fn new(value: u32) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Component, Debug)]
+pub struct Vitals {
+    pub hunger: Hunger,
+    pub status: PlayerStatus,
+}
+
+impl Vitals {
+    pub fn new(hunger: u32) -> Self {
+        Self { hunger: Hunger::new(hunger), status: PlayerStatus::Alive }
+    }
 }
 
 pub fn position_after_turn(

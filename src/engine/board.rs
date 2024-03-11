@@ -17,6 +17,14 @@ pub struct BoardTileBundle {
 pub struct PlayerBundle {
     pub board_pos: BoardPosition,
     pub is_facing: FacingDirection,
+    pub vitals: Vitals,
+    pub sprite: MaterialMesh2dBundle<ColorMaterial>,
+}
+
+#[derive(Bundle)]
+pub struct FoodBundle {
+    pub board_pos: BoardPosition,
+    pub energy_value: Hunger,
     pub sprite: MaterialMesh2dBundle<ColorMaterial>,
 }
 
@@ -30,6 +38,9 @@ impl Turn {
         Self { num: 1 }
     }
 }
+
+#[derive(Resource)]
+struct GameOver(bool);
 
 impl BoardState {
     pub fn new() -> Self {
@@ -106,19 +117,70 @@ fn spawn_players(
                             PlayerBundle {
                                 board_pos: random_pos,
                                 is_facing: FacingDirection::Right,
+                                vitals: Vitals::new(random_hunger_start()),
                                 sprite: MaterialMesh2dBundle {
                                     mesh: triangle,
                                     material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
                                     transform: Transform::from_xyz(
                                         grid_to_world(random_pos.x),
                                         grid_to_world(random_pos.y),
-                                        0.1,
+                                        1.0,
                                     )
                                     .with_rotation(Quat::from_rotation_z(-PI / 2.0)),
                                     ..default()
                                 },
                             },
                             Player,
+                        ))
+                        .id(),
+                );
+                break;
+            }
+        }
+    }
+}
+
+fn spawn_food(
+    mut commands: Commands,
+    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    board_state: Res<BoardState>,
+) {
+    for _ in 0..default_food_count() {
+        loop {
+            let random_pos = BoardPosition::from_tuple(random_board_pos());
+            if let Some(tile_id) = board_state.tiles.get(&random_pos) {
+                {
+                    let occ = tile_query.get(*tile_id);
+                    if occ.is_err() || *occ.unwrap() != OccupantType::Empty {
+                        continue;
+                    }
+                }
+
+                let occupant = tile_query.get_mut(*tile_id);
+                let mesh = meshes.add(Circle {
+                    radius: default_entity_size() / 2.,
+                });
+                let mut occupant = occupant.unwrap();
+                *occupant = OccupantType::Food(
+                    commands
+                        .spawn((
+                            FoodBundle {
+                                energy_value: Hunger::new(default_food_value()),
+                                board_pos: random_pos,
+                                sprite: MaterialMesh2dBundle {
+                                    mesh: Mesh2dHandle(mesh),
+                                    material: materials.add(Color::rgb(1., 0.5, 0.)),
+                                    transform: Transform::from_xyz(
+                                        grid_to_world(random_pos.x),
+                                        grid_to_world(random_pos.y),
+                                        0.9,
+                                    ),
+                                    ..default()
+                                },
+                            },
+                            Food,
                         ))
                         .id(),
                 );
@@ -170,17 +232,73 @@ fn move_player(
 fn simulation_ongoing(turn: Res<Turn>) -> bool {
     turn.num <= TURNS_PER_GEN
 }
+fn simulation_over_once(turn: Res<Turn>, its_joever: Res<GameOver>) -> bool {
+    turn.num > TURNS_PER_GEN && !its_joever.0
+}
+
+fn player_eat(
+    commands: &mut Commands,
+    pos: &BoardPosition,
+    direction: &FacingDirection,
+    vitals: &mut Vitals,
+    board_state: &Res<BoardState>,
+    tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,
+    food_query: &Query<&Hunger, (With<Food>, Without<Player>)>,
+) {
+    let food_pos = predict_move_pos(pos, direction);
+    if !pos_within_bounds(&food_pos) {
+        return;
+    }
+
+    let food_tile_id = board_state
+        .tiles
+        .get(&BoardPosition::new(food_pos.0 as u32, food_pos.1 as u32))
+        .copied();
+    let occupant = tile_query.get_mut(food_tile_id.unwrap());
+
+    if let Ok(mut occ) = occupant {
+        if let OccupantType::Food(food_id) = *occ {
+            vitals.hunger.value += food_query.get(food_id).unwrap().value;
+            commands.entity(food_id).despawn_recursive();
+            *occ = OccupantType::Empty;
+        }
+    }
+}
+
+fn update_player_vitals(
+    vitals: &mut Vitals,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    player_mat: &mut Handle<ColorMaterial>,
+) {
+    vitals.hunger.value -= 1;
+    if vitals.hunger.value == 0 {
+        vitals.status = PlayerStatus::DedPepega;
+        *player_mat = materials.add(Color::rgb(0., 0., 0.));
+    }
+}
 
 fn advance_players(
+    mut commands: Commands,
     mut turn: ResMut<Turn>,
     board_state: Res<BoardState>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
     mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
     mut player_query: Query<
-        (&mut BoardPosition, &mut FacingDirection, &mut Transform),
+        (
+            &mut BoardPosition,
+            &mut FacingDirection,
+            &mut Transform,
+            &mut Vitals,
+            &mut Handle<ColorMaterial>,
+        ),
         With<Player>,
     >,
+    food_query: Query<&Hunger, (With<Food>, Without<Player>)>,
 ) {
-    for (mut pos, mut direction, mut transform) in player_query.iter_mut() {
+    for (mut pos, mut direction, mut transform, mut vitals, mut player_mat) in player_query.iter_mut() {
+        if vitals.status == PlayerStatus::DedPepega {
+            continue;
+        }
         match random_player_action() {
             PlayerActionType::Idle => (),
             PlayerActionType::Move => move_player(
@@ -196,14 +314,38 @@ fn advance_players(
             PlayerActionType::Turn(FacingDirection::Left) => {
                 turn_left(&mut direction, &mut transform)
             }
+            PlayerActionType::Eat => {
+                player_eat(
+                    &mut commands,
+                    &pos,
+                    &direction,
+                    &mut vitals,
+                    &board_state,
+                    &mut tile_query,
+                    &food_query,
+                );
+            }
             act => unreachable!(
                 "Incorrect action type while trying to advance players: {:#?}",
                 act
             ),
         }
+        update_player_vitals(&mut vitals, &mut materials, &mut player_mat);
     }
 
     turn.num += 1;
+}
+
+fn log_survival_rate(player_query: Query<&Vitals, With<Player>>, mut its_joever: ResMut<GameOver>) {
+    its_joever.0 = true;
+    let (mut survived, mut died): (u32, u32) = (0, 0);
+    for vitals in player_query.iter() {
+        match vitals.status {
+            PlayerStatus::Alive => survived += 1,
+            PlayerStatus::DedPepega => died += 1,
+        }
+    }
+    warn!("Simulation over! Survived: {} players, died: {} players. Survival rate: {:.2}%.", survived, died, (survived as f32 / (survived + died) as f32) * 100.);
 }
 
 pub struct GameBoardPlugin;
@@ -213,7 +355,10 @@ impl Plugin for GameBoardPlugin {
         app.insert_resource(BoardState::new())
             .insert_resource(Time::<Fixed>::from_seconds(SECONDS_PER_TURN))
             .insert_resource(Turn::new())
-            .add_systems(Startup, (spawn_board, spawn_players).chain())
-            .add_systems(FixedUpdate, advance_players.run_if(simulation_ongoing));
+            .insert_resource(GameOver(false))
+            .add_systems(Startup, (spawn_board, spawn_players, spawn_food).chain())
+            .add_systems(FixedUpdate, advance_players.run_if(simulation_ongoing))
+            .add_systems(FixedLast, log_survival_rate.run_if(simulation_over_once));
+
     }
 }
