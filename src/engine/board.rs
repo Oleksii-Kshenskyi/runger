@@ -233,7 +233,7 @@ fn simulation_ongoing(turn: Res<Turn>) -> bool {
     turn.num <= TURNS_PER_GEN
 }
 fn simulation_over_once(turn: Res<Turn>, its_joever: Res<GameOver>) -> bool {
-    turn.num > TURNS_PER_GEN && its_joever.0 == false
+    turn.num > TURNS_PER_GEN && !its_joever.0
 }
 
 fn player_eat(
@@ -345,7 +345,7 @@ fn log_survival_rate(player_query: Query<&Vitals, With<Player>>, mut its_joever:
             PlayerStatus::DedPepega => died += 1,
         }
     }
-    warn!("Simulation over! Survived: {} players, died: {} players. Survival rate: {:.2}%.", survived, died, (survived as f32 / (survived + died) as f32) as f32 * 100.);
+    warn!("Simulation over! Survived: {} players, died: {} players. Survival rate: {:.2}%.", survived, died, (survived as f32 / (survived + died) as f32) * 100.);
 }
 
 pub struct GameBoardPlugin;
