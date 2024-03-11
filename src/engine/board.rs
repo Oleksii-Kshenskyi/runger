@@ -162,20 +162,23 @@ fn spawn_food(
                 let mut occupant = occupant.unwrap();
                 *occupant = OccupantType::Food(
                     commands
-                        .spawn(FoodBundle {
-                            satiation_value: Hunger::new(default_food_value()),
-                            board_pos: random_pos,
-                            sprite: MaterialMesh2dBundle {
-                                mesh: Mesh2dHandle(mesh),
-                                material: materials.add(Color::rgb(1., 0.5, 0.)),
-                                transform: Transform::from_xyz(
-                                    grid_to_world(random_pos.x),
-                                    grid_to_world(random_pos.y),
-                                    0.9,
-                                ),
-                                ..default()
+                        .spawn((
+                            FoodBundle {
+                                satiation_value: Hunger::new(default_food_value()),
+                                board_pos: random_pos,
+                                sprite: MaterialMesh2dBundle {
+                                    mesh: Mesh2dHandle(mesh),
+                                    material: materials.add(Color::rgb(1., 0.5, 0.)),
+                                    transform: Transform::from_xyz(
+                                        grid_to_world(random_pos.x),
+                                        grid_to_world(random_pos.y),
+                                        0.9,
+                                    ),
+                                    ..default()
+                                },
                             },
-                        })
+                            Food,
+                        ))
                         .id(),
                 );
                 break;
@@ -227,7 +230,36 @@ fn simulation_ongoing(turn: Res<Turn>) -> bool {
     turn.num <= TURNS_PER_GEN
 }
 
+fn player_eat(
+    commands: &mut Commands,
+    pos: &BoardPosition,
+    direction: &FacingDirection,
+    hunger: &mut Hunger,
+    board_state: &Res<BoardState>,
+    tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,
+    food_query: &Query<&Hunger, (With<Food>, Without<Player>)>,
+) {
+    let food_pos = predict_move_pos(pos, direction);
+    let food_tile_id = board_state
+        .tiles
+        .get(&BoardPosition::new(food_pos.0 as u32, food_pos.1 as u32))
+        .copied();
+    let occupant = tile_query.get_mut(food_tile_id.unwrap());
+    if !pos_within_bounds(&food_pos) || occupant.is_err() {
+        return;
+    }
+
+    if let Ok(mut occ) = occupant {
+        if let OccupantType::Food(food_id) = *occ {
+            hunger.value += food_query.get(food_id).unwrap().value;
+            commands.entity(food_id).despawn_recursive();
+            *occ = OccupantType::Empty;
+        }
+    }
+}
+
 fn advance_players(
+    mut commands: Commands,
     mut turn: ResMut<Turn>,
     board_state: Res<BoardState>,
     mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
@@ -240,6 +272,7 @@ fn advance_players(
         ),
         With<Player>,
     >,
+    food_query: Query<&Hunger, (With<Food>, Without<Player>)>,
 ) {
     for (mut pos, mut direction, mut transform, mut hunger) in player_query.iter_mut() {
         match random_player_action() {
@@ -258,13 +291,22 @@ fn advance_players(
                 turn_left(&mut direction, &mut transform)
             }
             PlayerActionType::Eat => {
-                () //player_eat(&pos, &direction, &mut hunger);
+                player_eat(
+                    &mut commands,
+                    &pos,
+                    &direction,
+                    &mut hunger,
+                    &board_state,
+                    &mut tile_query,
+                    &food_query,
+                );
             }
             act => unreachable!(
                 "Incorrect action type while trying to advance players: {:#?}",
                 act
             ),
         }
+        // update_player_vitals();
     }
 
     turn.num += 1;

@@ -74,14 +74,18 @@ pub fn predict_move_pos(player_pos: &BoardPosition, is_facing: &FacingDirection)
     }
 }
 
+pub fn pos_within_bounds(pos_to_check: &(i32, i32)) -> bool {
+    pos_to_check.0 >= 0
+        && pos_to_check.1 >= 0
+        && pos_to_check.0 < DEFAULT_GRID_SIZE as i32
+        && pos_to_check.1 < DEFAULT_GRID_SIZE as i32
+}
+
 pub fn tile_entity_by_pos<'a>(
     new_pos: (i32, i32),
     board_state: &'a Res<BoardState>,
 ) -> Option<&'a Entity> {
-    let within_bounds = new_pos.0 >= 0
-        && new_pos.1 >= 0
-        && new_pos.0 < DEFAULT_GRID_SIZE as i32
-        && new_pos.1 < DEFAULT_GRID_SIZE as i32;
+    let within_bounds = pos_within_bounds(&new_pos);
     if within_bounds {
         board_state
             .tiles
