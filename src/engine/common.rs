@@ -44,6 +44,7 @@ impl BoardPosition {
 pub enum OccupantType {
     Empty,
     Player(Entity),
+    Food(Entity),
 }
 
 #[derive(Resource)]
