@@ -26,14 +26,32 @@ pub enum PlayerActionType {
     Eat,
 }
 
+#[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum PlayerStatus {
+    Alive,
+    DedPepega,
+}
+
 #[derive(Component, Debug)]
 pub struct Hunger {
-    pub value: u32,
+    pub value: u32
 }
 
 impl Hunger {
     pub fn new(value: u32) -> Self {
         Self { value }
+    }
+}
+
+#[derive(Component, Debug)]
+pub struct Vitals {
+    pub hunger: Hunger,
+    pub status: PlayerStatus,
+}
+
+impl Vitals {
+    pub fn new(hunger: u32) -> Self {
+        Self { hunger: Hunger::new(hunger), status: PlayerStatus::Alive }
     }
 }
 

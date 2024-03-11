@@ -14,7 +14,7 @@ pub fn default_tile_margin() -> f32 {
     DEFAULT_TILE_SIZE * percent(15)
 }
 pub fn default_player_count() -> u32 {
-    ((DEFAULT_GRID_SIZE * DEFAULT_GRID_SIZE) as f32 * percent(30)) as u32
+    ((DEFAULT_GRID_SIZE * DEFAULT_GRID_SIZE) as f32 * percent(50)) as u32
 }
 pub const TURNS_PER_GEN: u32 = 300;
 pub fn default_food_count() -> u32 {
