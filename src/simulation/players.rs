@@ -24,6 +24,7 @@ pub enum PlayerActionType {
     Move,
     Turn(FacingDirection),
     Eat,
+    Kill,
 }
 
 #[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]
@@ -34,7 +35,7 @@ pub enum PlayerStatus {
 
 #[derive(Component, Debug)]
 pub struct Hunger {
-    pub value: u32
+    pub value: u32,
 }
 
 impl Hunger {
@@ -51,7 +52,10 @@ pub struct Vitals {
 
 impl Vitals {
     pub fn new(hunger: u32) -> Self {
-        Self { hunger: Hunger::new(hunger), status: PlayerStatus::Alive }
+        Self {
+            hunger: Hunger::new(hunger),
+            status: PlayerStatus::Alive,
+        }
     }
 }
 

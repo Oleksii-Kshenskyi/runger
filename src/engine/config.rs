@@ -29,4 +29,7 @@ pub fn default_hunger_max() -> u32 {
 pub fn default_food_value() -> u32 {
     TURNS_PER_GEN / 3 * 2
 }
+pub fn default_player_food_value() -> u32 {
+    default_food_value() / 2
+}
 pub const SECONDS_PER_TURN: f64 = 0.1;

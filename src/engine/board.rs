@@ -277,25 +277,86 @@ fn update_player_vitals(
     }
 }
 
-fn advance_players(
-    mut commands: Commands,
-    mut turn: ResMut<Turn>,
-    board_state: Res<BoardState>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
-    mut player_query: Query<
+fn player_kill(
+    mut commands: &mut Commands,
+    board_state: &Res<BoardState>,
+    mut materials: &mut ResMut<Assets<ColorMaterial>>,
+    mut meshes: &mut ResMut<Assets<Mesh>>,
+    actor_id: Entity,
+    tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,
+    mut player_query: &mut Query<
         (
+            Entity,
             &mut BoardPosition,
             &mut FacingDirection,
             &mut Transform,
             &mut Vitals,
             &mut Handle<ColorMaterial>,
+            &mut Mesh2dHandle,
+        ),
+        With<Player>,
+    >,
+    food_query: &Query<&Hunger, (With<Food>, Without<Player>)>,
+) {
+    let (_, actor_pos, actor_facing, _, _, _, _) = player_query.get(actor_id).unwrap();
+    let victim_pos = predict_move_pos(actor_pos, actor_facing);
+    if !pos_within_bounds(&victim_pos) {
+        return;
+    }
+
+    let victim_tile_id = *tile_entity_by_pos(victim_pos, &board_state).unwrap();
+    let mut victim_tile_occ = tile_query.get_mut(victim_tile_id).unwrap();
+    let victim_id = match *victim_tile_occ {
+        OccupantType::Player(id) => Some(id),
+        _ => None,
+    };
+    if victim_id.is_none() {
+        return;
+    }
+    let victim_id = victim_id.unwrap();
+
+    let (_, _, _, _, mut victim_vitals, mut victim_color, mut victim_mesh) =
+        player_query.get_mut(victim_id).unwrap();
+    victim_vitals.status = PlayerStatus::DedPepega;
+    victim_vitals.hunger.value = default_player_food_value();
+    *victim_color = materials.add(Color::rgb(0., 0., 0.));
+    *victim_mesh = Mesh2dHandle(meshes.add(Circle::new(default_entity_size() / 2.)));
+    commands.entity(victim_id).remove::<Player>().insert(Food);
+
+    *victim_tile_occ = OccupantType::Food(victim_id);
+}
+
+fn advance_players(
+    mut commands: Commands,
+    mut turn: ResMut<Turn>,
+    board_state: Res<BoardState>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
+    mut player_query: Query<
+        (
+            Entity,
+            &mut BoardPosition,
+            &mut FacingDirection,
+            &mut Transform,
+            &mut Vitals,
+            &mut Handle<ColorMaterial>,
+            &mut Mesh2dHandle,
         ),
         With<Player>,
     >,
     food_query: Query<&Hunger, (With<Food>, Without<Player>)>,
 ) {
-    for (mut pos, mut direction, mut transform, mut vitals, mut player_mat) in player_query.iter_mut() {
+    for (
+        player_id,
+        mut pos,
+        mut direction,
+        mut transform,
+        mut vitals,
+        mut player_mat,
+        _,
+    ) in player_query.iter_mut()
+    {
         if vitals.status == PlayerStatus::DedPepega {
             continue;
         }
@@ -314,17 +375,25 @@ fn advance_players(
             PlayerActionType::Turn(FacingDirection::Left) => {
                 turn_left(&mut direction, &mut transform)
             }
-            PlayerActionType::Eat => {
-                player_eat(
-                    &mut commands,
-                    &pos,
-                    &direction,
-                    &mut vitals,
-                    &board_state,
-                    &mut tile_query,
-                    &food_query,
-                );
-            }
+            PlayerActionType::Eat => player_eat(
+                &mut commands,
+                &pos,
+                &direction,
+                &mut vitals,
+                &board_state,
+                &mut tile_query,
+                &food_query,
+            ),
+            PlayerActionType::Kill => player_kill(
+                &mut commands,
+                &board_state,
+                &mut materials,
+                &mut meshes,
+                player_id,
+                &mut tile_query,
+                &mut player_query,
+                &food_query,
+            ),
             act => unreachable!(
                 "Incorrect action type while trying to advance players: {:#?}",
                 act
@@ -345,7 +414,12 @@ fn log_survival_rate(player_query: Query<&Vitals, With<Player>>, mut its_joever:
             PlayerStatus::DedPepega => died += 1,
         }
     }
-    warn!("Simulation over! Survived: {} players, died: {} players. Survival rate: {:.2}%.", survived, died, (survived as f32 / (survived + died) as f32) * 100.);
+    warn!(
+        "Simulation over! Survived: {} players, died: {} players. Survival rate: {:.2}%.",
+        survived,
+        died,
+        (survived as f32 / (survived + died) as f32) * 100.
+    );
 }
 
 pub struct GameBoardPlugin;
@@ -359,6 +433,5 @@ impl Plugin for GameBoardPlugin {
             .add_systems(Startup, (spawn_board, spawn_players, spawn_food).chain())
             .add_systems(FixedUpdate, advance_players.run_if(simulation_ongoing))
             .add_systems(FixedLast, log_survival_rate.run_if(simulation_over_once));
-
     }
 }
