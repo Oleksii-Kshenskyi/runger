@@ -1,9 +1,9 @@
-use std::{collections::HashMap, error::Error, f32::consts::PI, fmt::Display};
+use std::{collections::HashMap, error::Error, fmt::Display};
 
 use bevy::prelude::*;
 
 use crate::engine::config::*;
-use crate::simulation::players::{position_after_turn, FacingDirection};
+use crate::simulation::players::FacingDirection;
 
 #[derive(Debug)]
 pub struct RungerError {
@@ -55,22 +55,18 @@ pub struct BoardState {
 #[derive(Component, Debug, Copy, Clone)]
 pub struct BoardTile;
 
-pub fn turn_right(is_facing: &mut FacingDirection, transform: &mut Transform) {
-    *is_facing = position_after_turn(is_facing, FacingDirection::Right).unwrap();
-    transform.rotate_z(-PI / 2.);
-}
-
-pub fn turn_left(is_facing: &mut FacingDirection, transform: &mut Transform) {
-    *is_facing = position_after_turn(is_facing, FacingDirection::Left).unwrap();
-    transform.rotate_z(PI / 2.);
+#[derive(Debug)]
+pub enum FoodType {
+    Meal,
+    DeadMeat,
 }
 
 pub fn predict_move_pos(player_pos: &BoardPosition, is_facing: &FacingDirection) -> (i32, i32) {
     match (&player_pos, is_facing) {
-        (BoardPosition { x, y }, FacingDirection::Up) => (*x as i32, (*y + 1) as i32),
-        (BoardPosition { x, y }, FacingDirection::Right) => ((*x + 1) as i32, *y as i32),
-        (BoardPosition { x, y }, FacingDirection::Down) => (*x as i32, (*y - 1) as i32),
-        (BoardPosition { x, y }, FacingDirection::Left) => ((*x - 1) as i32, *y as i32),
+        (BoardPosition { x, y }, FacingDirection::Up) => (*x as i32, (*y as i32 + 1)),
+        (BoardPosition { x, y }, FacingDirection::Right) => ((*x as i32 + 1), *y as i32),
+        (BoardPosition { x, y }, FacingDirection::Down) => (*x as i32, (*y as i32 - 1)),
+        (BoardPosition { x, y }, FacingDirection::Left) => ((*x as i32 - 1), *y as i32),
     }
 }
 
