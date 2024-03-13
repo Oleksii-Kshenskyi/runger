@@ -50,6 +50,12 @@ impl BoardState {
     }
 }
 
+#[derive(Event, Debug)]
+pub struct KillEvent {
+    pub killer_id: Entity,
+    pub killer_facing: FacingDirection,
+}
+
 fn grid_to_world(grid_pos: u32) -> f32 {
     grid_pos as f32 * (DEFAULT_TILE_SIZE + default_tile_margin())
         - DEFAULT_GRID_SIZE as f32 * (DEFAULT_TILE_SIZE + default_tile_margin()) / 2.0
@@ -277,53 +283,56 @@ fn update_player_vitals(
     }
 }
 
-fn player_kill(
-    mut commands: &mut Commands,
-    board_state: &Res<BoardState>,
-    mut materials: &mut ResMut<Assets<ColorMaterial>>,
-    mut meshes: &mut ResMut<Assets<Mesh>>,
-    actor_id: Entity,
-    tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,
-    mut player_query: &mut Query<
+fn player_kill_listener(
+    mut kill_event: EventReader<KillEvent>,
+    mut commands: Commands,
+    board_state: Res<BoardState>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
+    mut player_query: Query<
         (
-            Entity,
-            &mut BoardPosition,
-            &mut FacingDirection,
-            &mut Transform,
+            &BoardPosition,
+            &FacingDirection,
             &mut Vitals,
             &mut Handle<ColorMaterial>,
-            &mut Mesh2dHandle,
+            &mut Handle<Mesh>,
         ),
-        With<Player>,
+        (With<Player>, Without<Food>),
     >,
-    food_query: &Query<&Hunger, (With<Food>, Without<Player>)>,
 ) {
-    let (_, actor_pos, actor_facing, _, _, _, _) = player_query.get(actor_id).unwrap();
-    let victim_pos = predict_move_pos(actor_pos, actor_facing);
-    if !pos_within_bounds(&victim_pos) {
-        return;
+    for event in kill_event.read() {
+        let (killer_id, killer_facing) = (event.killer_id, event.killer_facing);
+        warn!("processing event: killer entity: {:#?}, facing: {:#?}", killer_id, killer_facing);
+        let (killer_pos, _, _, _, _) = player_query.get(killer_id).unwrap();
+        let victim_pos = predict_move_pos(killer_pos, &killer_facing);
+        if !pos_within_bounds(&victim_pos) {
+            continue;
+        }
+
+        let victim_tile_id = *tile_entity_by_pos(victim_pos, &board_state).unwrap();
+        let mut victim_tile_occ = tile_query.get_mut(victim_tile_id).unwrap();
+        let victim_id = match *victim_tile_occ {
+            OccupantType::Player(id) => Some(id),
+            _ => None,
+        };
+        if victim_id.is_none() {
+            return;
+        }
+        let victim_id = victim_id.unwrap();
+
+        let (_, _, mut victim_vitals, mut victim_color, mut victim_mesh) =
+            player_query.get_mut(victim_id).unwrap();
+        victim_vitals.status = PlayerStatus::DedPepega;
+        victim_vitals.hunger.value = default_player_food_value();
+        *victim_color = materials.add(Color::rgb(0., 0., 0.));
+        *victim_mesh = meshes.add(Circle::new(default_entity_size() / 2.));
+        commands.entity(victim_id).remove::<Player>().insert(Food);
+
+        *victim_tile_occ = OccupantType::Food(victim_id);
+
+        warn!("Player on {:#?} has been killed!", victim_pos);
     }
-
-    let victim_tile_id = *tile_entity_by_pos(victim_pos, &board_state).unwrap();
-    let mut victim_tile_occ = tile_query.get_mut(victim_tile_id).unwrap();
-    let victim_id = match *victim_tile_occ {
-        OccupantType::Player(id) => Some(id),
-        _ => None,
-    };
-    if victim_id.is_none() {
-        return;
-    }
-    let victim_id = victim_id.unwrap();
-
-    let (_, _, _, _, mut victim_vitals, mut victim_color, mut victim_mesh) =
-        player_query.get_mut(victim_id).unwrap();
-    victim_vitals.status = PlayerStatus::DedPepega;
-    victim_vitals.hunger.value = default_player_food_value();
-    *victim_color = materials.add(Color::rgb(0., 0., 0.));
-    *victim_mesh = Mesh2dHandle(meshes.add(Circle::new(default_entity_size() / 2.)));
-    commands.entity(victim_id).remove::<Player>().insert(Food);
-
-    *victim_tile_occ = OccupantType::Food(victim_id);
 }
 
 fn advance_players(
@@ -331,7 +340,7 @@ fn advance_players(
     mut turn: ResMut<Turn>,
     board_state: Res<BoardState>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    mut kill_event: EventWriter<KillEvent>,
     mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
     mut player_query: Query<
         (
@@ -341,21 +350,13 @@ fn advance_players(
             &mut Transform,
             &mut Vitals,
             &mut Handle<ColorMaterial>,
-            &mut Mesh2dHandle,
         ),
         With<Player>,
     >,
     food_query: Query<&Hunger, (With<Food>, Without<Player>)>,
 ) {
-    for (
-        player_id,
-        mut pos,
-        mut direction,
-        mut transform,
-        mut vitals,
-        mut player_mat,
-        _,
-    ) in player_query.iter_mut()
+    for (player_id, mut pos, mut direction, mut transform, mut vitals, mut player_mat) in
+        player_query.iter_mut()
     {
         if vitals.status == PlayerStatus::DedPepega {
             continue;
@@ -384,16 +385,13 @@ fn advance_players(
                 &mut tile_query,
                 &food_query,
             ),
-            PlayerActionType::Kill => player_kill(
-                &mut commands,
-                &board_state,
-                &mut materials,
-                &mut meshes,
-                player_id,
-                &mut tile_query,
-                &mut player_query,
-                &food_query,
-            ),
+            PlayerActionType::Kill => {
+                warn!("advance_players(): killer pos: {:#?}, facing: {:#?}, entity: {:#?}", pos, direction, player_id);
+                kill_event.send(KillEvent {
+                    killer_id: player_id,
+                    killer_facing: *direction,
+                });
+            }
             act => unreachable!(
                 "Incorrect action type while trying to advance players: {:#?}",
                 act
@@ -430,8 +428,10 @@ impl Plugin for GameBoardPlugin {
             .insert_resource(Time::<Fixed>::from_seconds(SECONDS_PER_TURN))
             .insert_resource(Turn::new())
             .insert_resource(GameOver(false))
+            .add_event::<KillEvent>()
             .add_systems(Startup, (spawn_board, spawn_players, spawn_food).chain())
             .add_systems(FixedUpdate, advance_players.run_if(simulation_ongoing))
+            .add_systems(Update, player_kill_listener.run_if(simulation_ongoing))
             .add_systems(FixedLast, log_survival_rate.run_if(simulation_over_once));
     }
 }

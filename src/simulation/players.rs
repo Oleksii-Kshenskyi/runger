@@ -10,7 +10,7 @@ pub struct Player;
 #[derive(Component, Debug)]
 pub struct Food;
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone, Copy)]
 pub enum FacingDirection {
     Up,
     Left,
