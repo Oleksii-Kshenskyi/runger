@@ -36,12 +36,9 @@ struct Turn {
 
 impl Turn {
     pub fn new() -> Self {
-        Self { num: 1 }
+        Self { num: 0 }
     }
 }
-
-#[derive(Resource)]
-struct GameOver(bool);
 
 impl BoardState {
     pub fn new() -> Self {
@@ -79,6 +76,13 @@ pub struct TurnEvent {
 #[derive(Event, Debug)]
 pub struct UpdateVitalsEvent {
     pub hungerer_id: Entity,
+}
+
+#[derive(Default, Clone, Copy, States, Debug, Hash, PartialEq, Eq)]
+pub enum VisualizerState {
+    #[default]
+    SimulationRunning,
+    GenerationFinished,
 }
 
 fn grid_to_world(grid_pos: u32) -> f32 {
@@ -298,13 +302,6 @@ fn player_move_listener(
     }
 }
 
-fn simulation_ongoing(turn: Res<Turn>) -> bool {
-    turn.num <= TURNS_PER_GEN
-}
-fn simulation_over_once(turn: Res<Turn>, its_joever: Res<GameOver>) -> bool {
-    turn.num > TURNS_PER_GEN && !its_joever.0
-}
-
 fn player_eat_listener(
     mut commands: Commands,
     mut eat_events: EventReader<EatEvent>,
@@ -436,8 +433,15 @@ fn player_turn_listener(
     }
 }
 
+fn advance_turn(mut turn: ResMut<Turn>, mut states: ResMut<NextState<VisualizerState>>) {
+    turn.num += 1;
+
+    if turn.num > TURNS_PER_GEN {
+        states.set(VisualizerState::GenerationFinished);
+    }
+}
+
 fn advance_players(
-    mut turn: ResMut<Turn>,
     mut kill_event: EventWriter<KillEvent>,
     mut eat_event: EventWriter<EatEvent>,
     mut move_event: EventWriter<MoveEvent>,
@@ -492,12 +496,9 @@ fn advance_players(
             hungerer_id: player_id,
         });
     }
-
-    turn.num += 1;
 }
 
-fn log_survival_rate(player_query: Query<&Vitals, With<Player>>, mut its_joever: ResMut<GameOver>) {
-    its_joever.0 = true;
+fn log_survival_rate(player_query: Query<&Vitals, With<Player>>) {
     let mut survived: u32 = 0;
     for vitals in player_query.iter() {
         match vitals.status {
@@ -518,32 +519,34 @@ pub struct GameBoardPlugin;
 
 impl Plugin for GameBoardPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(BoardState::new())
+        app
+            .init_state::<VisualizerState>()
+            .insert_resource(BoardState::new())
             .insert_resource(Time::<Fixed>::from_seconds(SECONDS_PER_TURN))
             .insert_resource(Turn::new())
-            .insert_resource(GameOver(false))
             .add_event::<KillEvent>()
             .add_event::<EatEvent>()
             .add_event::<MoveEvent>()
             .add_event::<TurnEvent>()
             .add_event::<UpdateVitalsEvent>()
             .add_systems(Startup, (spawn_board, spawn_players, spawn_food).chain())
-            .add_systems(FixedUpdate, advance_players.run_if(simulation_ongoing))
+            .add_systems(FixedUpdate, (advance_players, advance_turn).run_if(in_state(VisualizerState::SimulationRunning)))
             .add_systems(
                 Update,
                 (
-                    player_kill_listener,
-                    player_eat_listener,
-                    player_move_listener,
                     player_turn_listener,
+                    player_move_listener,
+                    player_eat_listener,
+                    player_kill_listener,
                 )
-                    .run_if(simulation_ongoing)
+                    .chain()
+                    .run_if(in_state(VisualizerState::SimulationRunning))
                     .after(advance_players),
             )
             .add_systems(
                 PostUpdate,
-                update_vitals_listener.run_if(simulation_ongoing),
+                update_vitals_listener.run_if(in_state(VisualizerState::SimulationRunning)),
             )
-            .add_systems(FixedLast, log_survival_rate.run_if(simulation_over_once));
+            .add_systems(OnEnter(VisualizerState::GenerationFinished), log_survival_rate);
     }
 }
