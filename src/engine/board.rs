@@ -261,44 +261,40 @@ fn player_move_listener(
     board_state: Res<BoardState>,
 ) {
     for event in move_events.read() {
-        let (mover_id, mover_facing) = (event.mover_id, event.mover_facing);
-        let maybe_query_res = player_query.get_mut(mover_id);
-        if maybe_query_res.is_err() {
-            continue;
-        }
-        let (mut mover_pos, mut mover_transform) = maybe_query_res.unwrap();
-        let new_pos: (i32, i32) = predict_move_pos(&mover_pos, &mover_facing);
-        let maybe_new_tile = tile_entity_by_pos(new_pos, &board_state);
+        if let Ok((mut mover_pos, mut mover_transform)) = player_query.get_mut(event.mover_id) {
+            let new_pos: (i32, i32) = predict_move_pos(&mover_pos, &event.mover_facing);
+            let maybe_new_tile = tile_entity_by_pos(new_pos, &board_state);
 
-        if maybe_new_tile.is_none()
-            || !player_can_move_here(maybe_new_tile.unwrap(), &mut tile_query)
-        {
-            return;
-        }
+            if maybe_new_tile.is_none()
+                || !player_can_move_here(maybe_new_tile.unwrap(), &mut tile_query)
+            {
+                return;
+            }
 
-        let new_tile_id = *maybe_new_tile.unwrap();
-        let old_tile_id = *board_state.tiles.get(&mover_pos).unwrap();
-        // extract old tile's old occupant type (Player(Entity))
-        let old_tile_occ = { *tile_query.get_mut(old_tile_id).unwrap() };
-        // new tile occ = Player(Entity)
-        if let Ok(mut new_tile_occ) = tile_query.get_mut(new_tile_id) {
-            *new_tile_occ = old_tile_occ;
+            let new_tile_id = *maybe_new_tile.unwrap();
+            let old_tile_id = *board_state.tiles.get(&mover_pos).unwrap();
+            // extract old tile's old occupant type (Player(Entity))
+            let old_tile_occ = { *tile_query.get_mut(old_tile_id).unwrap() };
+            // new tile occ = Player(Entity)
+            if let Ok(mut new_tile_occ) = tile_query.get_mut(new_tile_id) {
+                *new_tile_occ = old_tile_occ;
+            }
+            // old tile occ = empty
+            if let Ok(mut old_tile_occ) = tile_query.get_mut(old_tile_id) {
+                *old_tile_occ = OccupantType::Empty;
+            }
+            // move player (transform)
+            mover_transform.translation = Vec3::new(
+                grid_to_world(new_pos.0 as u32),
+                grid_to_world(new_pos.1 as u32),
+                0.1,
+            );
+            // update new player board position
+            *mover_pos = BoardPosition {
+                x: new_pos.0 as u32,
+                y: new_pos.1 as u32,
+            };
         }
-        // old tile occ = empty
-        if let Ok(mut old_tile_occ) = tile_query.get_mut(old_tile_id) {
-            *old_tile_occ = OccupantType::Empty;
-        }
-        // move player (transform)
-        mover_transform.translation = Vec3::new(
-            grid_to_world(new_pos.0 as u32),
-            grid_to_world(new_pos.1 as u32),
-            0.1,
-        );
-        // update new player board position
-        *mover_pos = BoardPosition {
-            x: new_pos.0 as u32,
-            y: new_pos.1 as u32,
-        };
     }
 }
 
@@ -318,29 +314,25 @@ fn player_eat_listener(
     food_query: Query<&Hunger, (With<Food>, Without<Player>)>,
 ) {
     for event in eat_events.read() {
-        let (gorger_id, gorger_facing) = (event.gorger_id, event.gorger_facing);
-        let maybe_query_res = player_query.get_mut(gorger_id);
-        if maybe_query_res.is_err() {
-            continue;
-        }
-        let (gorger_pos, mut gorger_vitals) = maybe_query_res.unwrap();
-        let food_pos = predict_move_pos(gorger_pos, &gorger_facing);
-        if !pos_within_bounds(&food_pos) {
-            return;
-        }
+        if let Ok((gorger_pos, mut gorger_vitals)) = player_query.get_mut(event.gorger_id) {
+            let food_pos = predict_move_pos(gorger_pos, &event.gorger_facing);
+            if !pos_within_bounds(&food_pos) {
+                return;
+            }
 
-        let food_tile_id = board_state
-            .tiles
-            .get(&BoardPosition::new(food_pos.0 as u32, food_pos.1 as u32))
-            .copied();
-        let occupant = tile_query.get_mut(food_tile_id.unwrap());
+            let food_tile_id = board_state
+                .tiles
+                .get(&BoardPosition::new(food_pos.0 as u32, food_pos.1 as u32))
+                .copied();
+            let occupant = tile_query.get_mut(food_tile_id.unwrap());
 
-        if let Ok(mut occ) = occupant {
-            if let OccupantType::Food(food_id) = *occ {
-                if let Ok(food_hunger) = food_query.get(food_id) {
-                    gorger_vitals.hunger.value += food_hunger.value;
-                    commands.entity(food_id).despawn_recursive();
-                    *occ = OccupantType::Empty;
+            if let Ok(mut occ) = occupant {
+                if let OccupantType::Food(food_id) = *occ {
+                    if let Ok(food_hunger) = food_query.get(food_id) {
+                        gorger_vitals.hunger.value += food_hunger.value;
+                        commands.entity(food_id).despawn_recursive();
+                        *occ = OccupantType::Empty;
+                    }
                 }
             }
         }
@@ -386,43 +378,35 @@ fn player_kill_listener(
     >,
 ) {
     for event in kill_event.read() {
-        let (killer_id, killer_facing) = (event.killer_id, event.killer_facing);
+        if let Ok((killer_pos, _, _, _)) = player_query.get(event.killer_id) {
+            let victim_pos = predict_move_pos(killer_pos, &event.killer_facing);
+            if !pos_within_bounds(&victim_pos) {
+                continue;
+            }
 
-        let maybe_query_res = player_query.get(killer_id);
-        if maybe_query_res.is_err() {
-            continue;
-        }
-        let (killer_pos, _, _, _) = maybe_query_res.unwrap();
-        let victim_pos = predict_move_pos(killer_pos, &killer_facing);
-        if !pos_within_bounds(&victim_pos) {
-            continue;
-        }
-
-        let victim_tile_id = *tile_entity_by_pos(victim_pos, &board_state).unwrap();
-        let mut victim_tile_occ = tile_query.get_mut(victim_tile_id).unwrap();
-        let victim_id = match *victim_tile_occ {
-            OccupantType::Player(id) => Some(id),
-            _ => None,
-        };
-        if victim_id.is_none() {
-            return;
-        }
-        let victim_id = victim_id.unwrap();
-
-        if let Ok((victim_pos, victim_vitals, _, _)) = player_query.get_mut(victim_id) {
-            if victim_vitals.status == PlayerStatus::Alive {
-                *victim_tile_occ = OccupantType::Empty;
-                commands.entity(victim_id).despawn_recursive();
-                place_food_at(
-                    &mut commands,
-                    *victim_pos,
-                    FoodType::DeadMeat,
-                    &board_state,
-                    &mut tile_query,
-                    &mut materials,
-                    &mut meshes,
-                )
-                .unwrap();
+            let victim_tile_id = *tile_entity_by_pos(victim_pos, &board_state).unwrap();
+            let mut victim_tile_occ = tile_query.get_mut(victim_tile_id).unwrap();
+            let victim_id = match *victim_tile_occ {
+                OccupantType::Player(id) => Some(id),
+                _ => None,
+            };
+            if let Some(victim_id) = victim_id {
+                if let Ok((victim_pos, victim_vitals, _, _)) = player_query.get_mut(victim_id) {
+                    if victim_vitals.status == PlayerStatus::Alive {
+                        *victim_tile_occ = OccupantType::Empty;
+                        commands.entity(victim_id).despawn_recursive();
+                        place_food_at(
+                            &mut commands,
+                            *victim_pos,
+                            FoodType::DeadMeat,
+                            &board_state,
+                            &mut tile_query,
+                            &mut materials,
+                            &mut meshes,
+                        )
+                        .unwrap();
+                    }
+                }
             }
         }
     }
@@ -436,11 +420,9 @@ fn player_turn_listener(
     >,
 ) {
     for event in turn_events.read() {
-        let maybe_query_res = player_query.get_mut(event.turner_id);
-        if maybe_query_res.is_err() {
-            continue;
-        }
-        if let Ok((mut turner_facing_mut, mut turner_transform)) = maybe_query_res {
+        if let Ok((mut turner_facing_mut, mut turner_transform)) =
+            player_query.get_mut(event.turner_id)
+        {
             let turn_rad = match event.turn_direction {
                 FacingDirection::Right => -PI / 2.,
                 FacingDirection::Left => PI / 2.,
