@@ -10,7 +10,7 @@ pub struct RungerError {
     message: String,
 }
 
-pub fn rerror(msg: &'static str) -> Box<dyn Error> {
+pub fn rerror(msg: &str) -> Box<dyn Error> {
     Box::new(RungerError {
         message: msg.to_string(),
     })
@@ -49,7 +49,77 @@ pub enum OccupantType {
 
 #[derive(Resource)]
 pub struct BoardState {
-    pub tiles: HashMap<BoardPosition, Entity>,
+    tiles: HashMap<BoardPosition, Entity>,
+    occupants: HashMap<BoardPosition, OccupantType>,
+}
+
+impl BoardState {
+    fn looking_pos(player_pos: &BoardPosition, is_facing: &FacingDirection) -> (i32, i32) {
+        match (&player_pos, is_facing) {
+            (BoardPosition { x, y }, FacingDirection::Up) => (*x as i32, (*y as i32 + 1)),
+            (BoardPosition { x, y }, FacingDirection::Right) => ((*x as i32 + 1), *y as i32),
+            (BoardPosition { x, y }, FacingDirection::Down) => (*x as i32, (*y as i32 - 1)),
+            (BoardPosition { x, y }, FacingDirection::Left) => ((*x as i32 - 1), *y as i32),
+        }
+    }
+
+    fn pos_within_bounds(pos_to_check: &(i32, i32)) -> bool {
+        pos_to_check.0 >= 0
+            && pos_to_check.1 >= 0
+            && pos_to_check.0 < DEFAULT_GRID_SIZE as i32
+            && pos_to_check.1 < DEFAULT_GRID_SIZE as i32
+    }
+
+    pub fn new() -> Self {
+        Self {
+            tiles: HashMap::new(),
+            occupants: HashMap::new(),
+        }
+    }
+
+    pub fn occ_at(&self, pos: &BoardPosition) -> Option<&OccupantType> {
+        self.occupants.get(pos)
+    }
+
+    pub fn occ_at_mut(&mut self, pos: &BoardPosition) -> Option<&mut OccupantType> {
+        self.occupants.get_mut(pos)
+    }
+
+    pub fn looking_at(
+        &self,
+        looker_pos: &BoardPosition,
+        looker_facing: &FacingDirection,
+    ) -> Option<(BoardPosition, &OccupantType)> {
+        let looking_pos = BoardState::looking_pos(looker_pos, looker_facing);
+        if Self::pos_within_bounds(&looking_pos) {
+            let pos = BoardPosition::new(looking_pos.0 as u32, looking_pos.1 as u32);
+            self.occupants.get(&pos).map(|o| (pos, o))
+        } else {
+            None
+        }
+    }
+
+    pub fn looking_at_mut(
+        &mut self,
+        looker_pos: &BoardPosition,
+        looker_facing: &FacingDirection,
+    ) -> Option<(BoardPosition, &mut OccupantType)> {
+        let looking_pos = BoardState::looking_pos(looker_pos, looker_facing);
+        if Self::pos_within_bounds(&looking_pos) {
+            let pos = BoardPosition::new(looking_pos.0 as u32, looking_pos.1 as u32);
+            self.occupants.get_mut(&pos).map(|o| (pos, o))
+        } else {
+            None
+        }
+    }
+
+    pub fn add_tile(&mut self, pos: BoardPosition, tile_id: Entity) {
+        self.tiles.insert(pos, tile_id);
+    }
+
+    pub fn add_occ(&mut self, pos: BoardPosition, occ: OccupantType) {
+        self.occupants.insert(pos, occ);
+    }
 }
 
 #[derive(Component, Debug, Copy, Clone)]
@@ -59,42 +129,4 @@ pub struct BoardTile;
 pub enum FoodType {
     Meal,
     DeadMeat,
-}
-
-pub fn predict_move_pos(player_pos: &BoardPosition, is_facing: &FacingDirection) -> (i32, i32) {
-    match (&player_pos, is_facing) {
-        (BoardPosition { x, y }, FacingDirection::Up) => (*x as i32, (*y as i32 + 1)),
-        (BoardPosition { x, y }, FacingDirection::Right) => ((*x as i32 + 1), *y as i32),
-        (BoardPosition { x, y }, FacingDirection::Down) => (*x as i32, (*y as i32 - 1)),
-        (BoardPosition { x, y }, FacingDirection::Left) => ((*x as i32 - 1), *y as i32),
-    }
-}
-
-pub fn pos_within_bounds(pos_to_check: &(i32, i32)) -> bool {
-    pos_to_check.0 >= 0
-        && pos_to_check.1 >= 0
-        && pos_to_check.0 < DEFAULT_GRID_SIZE as i32
-        && pos_to_check.1 < DEFAULT_GRID_SIZE as i32
-}
-
-pub fn tile_entity_by_pos<'a>(
-    new_pos: (i32, i32),
-    board_state: &'a Res<BoardState>,
-) -> Option<&'a Entity> {
-    let within_bounds = pos_within_bounds(&new_pos);
-    if within_bounds {
-        board_state
-            .tiles
-            .get(&BoardPosition::new(new_pos.0 as u32, new_pos.1 as u32))
-    } else {
-        None
-    }
-}
-
-pub fn player_can_move_here(
-    tile_entity: &Entity,
-    tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,
-) -> bool {
-    *tile_query.get(*tile_entity).unwrap() == OccupantType::Empty
-    // if new (destination) tile's occupant type is empty
 }

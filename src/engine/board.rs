@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 
-use std::collections::HashMap;
 use std::error::Error;
 use std::f32::consts::PI;
 
@@ -10,7 +9,6 @@ use crate::{engine::common::*, engine::config::*, engine::random::*, simulation:
 #[derive(Bundle)]
 pub struct BoardTileBundle {
     pub pos: BoardPosition,
-    pub occupant: OccupantType,
     pub sprite: SpriteBundle,
 }
 
@@ -40,14 +38,6 @@ impl Turn {
     }
 }
 
-impl BoardState {
-    pub fn new() -> Self {
-        Self {
-            tiles: HashMap::new(),
-        }
-    }
-}
-
 #[derive(Event, Debug)]
 pub struct KillEvent {
     pub killer_id: Entity,
@@ -63,6 +53,7 @@ pub struct EatEvent {
 #[derive(Event, Debug)]
 pub struct MoveEvent {
     pub mover_id: Entity,
+    pub mover_pos: BoardPosition,
     pub mover_facing: FacingDirection,
 }
 
@@ -105,7 +96,6 @@ fn spawn_board(
                 .spawn((
                     BoardTileBundle {
                         pos: BoardPosition::new(x, y),
-                        occupant: OccupantType::Empty,
                         sprite: SpriteBundle {
                             sprite: Sprite {
                                 color: tile_color,
@@ -119,9 +109,8 @@ fn spawn_board(
                     BoardTile,
                 ))
                 .id();
-            board_state
-                .tiles
-                .insert(BoardPosition::new(x, y), tile_entity);
+            board_state.add_tile(BoardPosition::new(x, y), tile_entity);
+            board_state.add_occ(BoardPosition::new(x, y), OccupantType::Empty);
         }
     }
 }
@@ -130,14 +119,13 @@ fn spawn_players(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    board_state: Res<BoardState>,
-    mut query: Query<&mut OccupantType, With<BoardTile>>,
+    mut board_state: ResMut<BoardState>,
 ) {
     for _ in 0..default_player_count() {
         loop {
             let random_pos = BoardPosition::from_tuple(random_board_pos());
-            let tile_entity = *board_state.tiles.get(&random_pos).unwrap();
-            if let Ok(mut occupant) = query.get_mut(tile_entity) {
+
+            if let Some(occupant) = board_state.occ_at_mut(&random_pos) {
                 if *occupant != OccupantType::Empty {
                     continue;
                 }
@@ -179,8 +167,7 @@ pub fn place_food_at(
     commands: &mut Commands,
     pos: BoardPosition,
     food_type: FoodType,
-    board_state: &Res<BoardState>,
-    tile_query: &mut Query<&mut OccupantType, With<BoardTile>>,
+    board_state: &mut ResMut<BoardState>,
     materials: &mut ResMut<Assets<ColorMaterial>>,
     meshes: &mut ResMut<Assets<Mesh>>,
 ) -> Result<(), Box<dyn Error>> {
@@ -189,53 +176,54 @@ pub fn place_food_at(
         FoodType::DeadMeat => (default_player_food_value(), Color::rgb(0., 0., 0.)),
     };
 
-    let tile_id = board_state.tiles.get(&pos).unwrap();
-    let occupant = tile_query.get_mut(*tile_id);
     let mesh = meshes.add(Circle {
         radius: default_entity_size() / 2.,
     });
-    let mut occupant = occupant.unwrap();
-    if *occupant != OccupantType::Empty {
-        return Err(rerror("Trying to place food on a non-empty tile!"));
-    };
-    *occupant = OccupantType::Food(
-        commands
-            .spawn((
-                FoodBundle {
-                    energy_value: Hunger::new(energy_value),
-                    board_pos: pos,
-                    sprite: MaterialMesh2dBundle {
-                        mesh: Mesh2dHandle(mesh),
-                        material: materials.add(food_color),
-                        transform: Transform::from_xyz(
-                            grid_to_world(pos.x),
-                            grid_to_world(pos.y),
-                            0.9,
-                        ),
-                        ..default()
+    if let Some(occupant) = board_state.occ_at_mut(&pos) {
+        if *occupant != OccupantType::Empty {
+            return Err(rerror("Trying to place food on a non-empty tile!"));
+        };
+        *occupant = OccupantType::Food(
+            commands
+                .spawn((
+                    FoodBundle {
+                        energy_value: Hunger::new(energy_value),
+                        board_pos: pos,
+                        sprite: MaterialMesh2dBundle {
+                            mesh: Mesh2dHandle(mesh),
+                            material: materials.add(food_color),
+                            transform: Transform::from_xyz(
+                                grid_to_world(pos.x),
+                                grid_to_world(pos.y),
+                                0.9,
+                            ),
+                            ..default()
+                        },
                     },
-                },
-                Food,
-            ))
-            .id(),
-    );
+                    Food,
+                ))
+                .id(),
+        );
+        return Ok(());
+    }
 
-    Ok(())
+    Err(rerror(&format!(
+        "place_food_at(): no entry on occupant at {:?}...",
+        &pos
+    )))
 }
 
 fn spawn_food(
     mut commands: Commands,
-    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    board_state: Res<BoardState>,
+    mut board_state: ResMut<BoardState>,
 ) {
     for _ in 0..default_food_count() {
         loop {
             let random_pos = BoardPosition::from_tuple(random_board_pos());
-            if let Some(tile_id) = board_state.tiles.get(&random_pos) {
-                let occ = tile_query.get(*tile_id);
-                if occ.is_err() || *occ.unwrap() != OccupantType::Empty {
+            if let Some(occ) = board_state.occ_at(&random_pos) {
+                if *occ != OccupantType::Empty {
                     continue;
                 }
 
@@ -243,8 +231,7 @@ fn spawn_food(
                     &mut commands,
                     random_pos,
                     FoodType::Meal,
-                    &board_state,
-                    &mut tile_query,
+                    &mut board_state,
                     &mut materials,
                     &mut meshes,
                 )
@@ -257,47 +244,50 @@ fn spawn_food(
 
 fn player_move_listener(
     mut move_events: EventReader<MoveEvent>,
-    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
     mut player_query: Query<
         (&mut BoardPosition, &mut Transform),
         (With<Player>, Without<BoardTile>),
     >,
-    board_state: Res<BoardState>,
+    mut board_state: ResMut<BoardState>,
 ) {
     for event in move_events.read() {
-        if let Ok((mut mover_pos, mut mover_transform)) = player_query.get_mut(event.mover_id) {
-            let new_pos: (i32, i32) = predict_move_pos(&mover_pos, &event.mover_facing);
-            let maybe_new_tile = tile_entity_by_pos(new_pos, &board_state);
+        let mut maybe_move_data: Option<(BoardPosition, OccupantType)> = None;
+        if let Some((new_pos, new_tile_occ)) =
+            board_state.looking_at(&event.mover_pos, &event.mover_facing)
+        {
+            if let Some(old_tile_occ) = board_state.occ_at(&event.mover_pos) {
+                if *new_tile_occ == OccupantType::Empty {
+                    // get data necessary for the move via immutable queries
+                    maybe_move_data = Some((new_pos, *old_tile_occ));
+                }
+            }
+        }
 
-            if maybe_new_tile.is_none()
-                || !player_can_move_here(maybe_new_tile.unwrap(), &mut tile_query)
-            {
-                return;
+        if maybe_move_data.is_some() {
+            if let Some(old_occ_mut) = board_state.occ_at_mut(&event.mover_pos) {
+                *old_occ_mut = OccupantType::Empty; // deoccupy the old tile if the move is valid
             }
+        }
 
-            let new_tile_id = *maybe_new_tile.unwrap();
-            let old_tile_id = *board_state.tiles.get(&mover_pos).unwrap();
-            // extract old tile's old occupant type (Player(Entity))
-            let old_tile_occ = { *tile_query.get_mut(old_tile_id).unwrap() };
-            // new tile occ = Player(Entity)
-            if let Ok(mut new_tile_occ) = tile_query.get_mut(new_tile_id) {
-                *new_tile_occ = old_tile_occ;
+        if let Some((new_pos, old_occ_clone)) = maybe_move_data {
+            if let Ok((mut mover_pos, mut mover_transform)) = player_query.get_mut(event.mover_id) {
+                if let Some((_, new_tile_occ)) =
+                    board_state.looking_at_mut(&mover_pos, &event.mover_facing)
+                {
+                    // move player occupancy to the new position
+                    *new_tile_occ = old_occ_clone;
+
+                    // move player graphics (transform)
+                    mover_transform.translation =
+                        Vec3::new(grid_to_world(new_pos.x), grid_to_world(new_pos.y), 0.1);
+
+                    // update new player board position
+                    *mover_pos = BoardPosition {
+                        x: new_pos.x,
+                        y: new_pos.y,
+                    };
+                }
             }
-            // old tile occ = empty
-            if let Ok(mut old_tile_occ) = tile_query.get_mut(old_tile_id) {
-                *old_tile_occ = OccupantType::Empty;
-            }
-            // move player (transform)
-            mover_transform.translation = Vec3::new(
-                grid_to_world(new_pos.0 as u32),
-                grid_to_world(new_pos.1 as u32),
-                0.1,
-            );
-            // update new player board position
-            *mover_pos = BoardPosition {
-                x: new_pos.0 as u32,
-                y: new_pos.1 as u32,
-            };
         }
     }
 }
@@ -305,25 +295,13 @@ fn player_move_listener(
 fn player_eat_listener(
     mut commands: Commands,
     mut eat_events: EventReader<EatEvent>,
-    board_state: Res<BoardState>,
+    mut board_state: ResMut<BoardState>,
     mut player_query: Query<(&BoardPosition, &mut Vitals), (With<Player>, Without<Food>)>,
-    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
     food_query: Query<&Hunger, (With<Food>, Without<Player>)>,
 ) {
     for event in eat_events.read() {
         if let Ok((gorger_pos, mut gorger_vitals)) = player_query.get_mut(event.gorger_id) {
-            let food_pos = predict_move_pos(gorger_pos, &event.gorger_facing);
-            if !pos_within_bounds(&food_pos) {
-                return;
-            }
-
-            let food_tile_id = board_state
-                .tiles
-                .get(&BoardPosition::new(food_pos.0 as u32, food_pos.1 as u32))
-                .copied();
-            let occupant = tile_query.get_mut(food_tile_id.unwrap());
-
-            if let Ok(mut occ) = occupant {
+            if let Some((_, occ)) = board_state.looking_at_mut(gorger_pos, &event.gorger_facing) {
                 if let OccupantType::Food(food_id) = *occ {
                     if let Ok(food_hunger) = food_query.get(food_id) {
                         gorger_vitals.hunger.value += food_hunger.value;
@@ -360,10 +338,9 @@ fn update_vitals_listener(
 fn player_kill_listener(
     mut kill_event: EventReader<KillEvent>,
     mut commands: Commands,
-    board_state: Res<BoardState>,
+    mut board_state: ResMut<BoardState>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut tile_query: Query<&mut OccupantType, With<BoardTile>>,
     mut player_query: Query<
         (
             &BoardPosition,
@@ -376,32 +353,24 @@ fn player_kill_listener(
 ) {
     for event in kill_event.read() {
         if let Ok((killer_pos, _, _, _)) = player_query.get(event.killer_id) {
-            let victim_pos = predict_move_pos(killer_pos, &event.killer_facing);
-            if !pos_within_bounds(&victim_pos) {
-                continue;
-            }
-
-            let victim_tile_id = *tile_entity_by_pos(victim_pos, &board_state).unwrap();
-            let mut victim_tile_occ = tile_query.get_mut(victim_tile_id).unwrap();
-            let victim_id = match *victim_tile_occ {
-                OccupantType::Player(id) => Some(id),
-                _ => None,
-            };
-            if let Some(victim_id) = victim_id {
-                if let Ok((victim_pos, victim_vitals, _, _)) = player_query.get_mut(victim_id) {
-                    if victim_vitals.status == PlayerStatus::Alive {
-                        *victim_tile_occ = OccupantType::Empty;
-                        commands.entity(victim_id).despawn_recursive();
-                        place_food_at(
-                            &mut commands,
-                            *victim_pos,
-                            FoodType::DeadMeat,
-                            &board_state,
-                            &mut tile_query,
-                            &mut materials,
-                            &mut meshes,
-                        )
-                        .unwrap();
+            if let Some((_, victim_tile_occ)) =
+                board_state.looking_at_mut(killer_pos, &event.killer_facing)
+            {
+                if let OccupantType::Player(victim_id) = *victim_tile_occ {
+                    if let Ok((victim_pos, victim_vitals, _, _)) = player_query.get_mut(victim_id) {
+                        if victim_vitals.status == PlayerStatus::Alive {
+                            *victim_tile_occ = OccupantType::Empty;
+                            commands.entity(victim_id).despawn_recursive();
+                            place_food_at(
+                                &mut commands,
+                                *victim_pos,
+                                FoodType::DeadMeat,
+                                &mut board_state,
+                                &mut materials,
+                                &mut meshes,
+                            )
+                            .unwrap();
+                        }
                     }
                 }
             }
@@ -447,9 +416,12 @@ fn advance_players(
     mut move_event: EventWriter<MoveEvent>,
     mut turn_event: EventWriter<TurnEvent>,
     mut update_vitals_event: EventWriter<UpdateVitalsEvent>,
-    mut player_query: Query<(Entity, &mut FacingDirection, &Vitals), With<Player>>,
+    mut player_query: Query<
+        (Entity, &BoardPosition, &mut FacingDirection, &Vitals),
+        (With<Player>, Without<BoardTile>),
+    >,
 ) {
-    for (player_id, direction, vitals) in player_query.iter_mut() {
+    for (player_id, player_pos, direction, vitals) in player_query.iter_mut() {
         if vitals.status == PlayerStatus::DedPepega {
             continue;
         }
@@ -458,6 +430,7 @@ fn advance_players(
             PlayerActionType::Move => {
                 move_event.send(MoveEvent {
                     mover_id: player_id,
+                    mover_pos: *player_pos,
                     mover_facing: *direction,
                 });
             }
@@ -519,8 +492,7 @@ pub struct GameBoardPlugin;
 
 impl Plugin for GameBoardPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .init_state::<VisualizerState>()
+        app.init_state::<VisualizerState>()
             .insert_resource(BoardState::new())
             .insert_resource(Time::<Fixed>::from_seconds(SECONDS_PER_TURN))
             .insert_resource(Turn::new())
@@ -530,7 +502,11 @@ impl Plugin for GameBoardPlugin {
             .add_event::<TurnEvent>()
             .add_event::<UpdateVitalsEvent>()
             .add_systems(Startup, (spawn_board, spawn_players, spawn_food).chain())
-            .add_systems(FixedUpdate, (advance_players, advance_turn).run_if(in_state(VisualizerState::SimulationRunning)))
+            .add_systems(
+                FixedUpdate,
+                (advance_players, advance_turn)
+                    .run_if(in_state(VisualizerState::SimulationRunning)),
+            )
             .add_systems(
                 Update,
                 (
@@ -547,6 +523,9 @@ impl Plugin for GameBoardPlugin {
                 PostUpdate,
                 update_vitals_listener.run_if(in_state(VisualizerState::SimulationRunning)),
             )
-            .add_systems(OnEnter(VisualizerState::GenerationFinished), log_survival_rate);
+            .add_systems(
+                OnEnter(VisualizerState::GenerationFinished),
+                log_survival_rate,
+            );
     }
 }
