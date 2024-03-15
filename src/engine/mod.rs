@@ -1,3 +1,4 @@
+pub mod actions;
 pub mod board;
 pub mod common;
 pub mod config;
