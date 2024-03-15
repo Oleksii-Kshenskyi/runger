@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 
 use crate::engine::config::*;
-use crate::simulation::players::{FacingDirection, Food, Hunger};
+use crate::simulation::players::{FacingDirection, Food, Energy};
 
 #[derive(Debug)]
 pub struct RungerError {
@@ -129,7 +129,7 @@ pub enum FoodType {
 #[derive(Bundle)]
 pub struct FoodBundle {
     pub board_pos: BoardPosition,
-    pub energy_value: Hunger,
+    pub energy_value: Energy,
     pub sprite: MaterialMesh2dBundle<ColorMaterial>,
 }
 
@@ -170,7 +170,7 @@ pub fn place_food_at(
             commands
                 .spawn((
                     FoodBundle {
-                        energy_value: Hunger::new(energy_value),
+                        energy_value: Energy::new(energy_value),
                         board_pos: pos,
                         sprite: MaterialMesh2dBundle {
                             mesh: Mesh2dHandle(mesh),

@@ -17,6 +17,7 @@ pub struct BoardTileBundle {
 pub struct PlayerBundle {
     pub board_pos: BoardPosition,
     pub is_facing: FacingDirection,
+    pub last_action_taken: PlayerActionType,
     pub vitals: Vitals,
     pub sprite: MaterialMesh2dBundle<ColorMaterial>,
 }
@@ -86,7 +87,8 @@ fn spawn_players(
                             PlayerBundle {
                                 board_pos: random_pos,
                                 is_facing: FacingDirection::Right,
-                                vitals: Vitals::new(random_hunger_start()),
+                                last_action_taken: PlayerActionType::Idle,
+                                vitals: Vitals::new(random_energy_start()),
                                 sprite: MaterialMesh2dBundle {
                                     mesh: triangle,
                                     material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
@@ -148,17 +150,19 @@ fn advance_turn(mut turn: ResMut<Turn>, mut states: ResMut<NextState<VisualizerS
 
 fn log_survival_rate(player_query: Query<&Vitals, With<Player>>) {
     let mut survived: u32 = 0;
+    let mut not_killed: u32 = 0;
     for vitals in player_query.iter() {
         match vitals.status {
             PlayerStatus::Alive => survived += 1,
-            PlayerStatus::DedPepega => (),
+            PlayerStatus::DedPepega => not_killed += 1,
         }
     }
     warn!(
-        "Simulation over! Started with {} players. Survived: {} players, died: {} players. Survival rate: {:.2}%.",
+        "Simulation over! Started with {} players. Survived: {} players, murdered: {} players, died from hunger: {} players. Survival rate: {:.2}%.",
         default_player_count(),
         survived,
-        default_player_count() - survived,
+        default_player_count() - survived - not_killed,
+        not_killed,
         (survived as f32 / default_player_count() as f32) * 100.
     );
 }

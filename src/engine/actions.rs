@@ -7,6 +7,8 @@ use crate::engine::common::*;
 use crate::engine::random::random_player_action;
 use crate::simulation::players::*;
 
+use super::config::action_cost;
+
 #[derive(Event, Debug)]
 pub struct KillEvent {
     pub killer_id: Entity,
@@ -41,7 +43,7 @@ pub struct UpdateVitalsEvent {
 fn player_move_listener(
     mut move_events: EventReader<MoveEvent>,
     mut player_query: Query<
-        (&mut BoardPosition, &mut Transform),
+        (&mut BoardPosition, &mut PlayerActionType, &mut Transform),
         (With<Player>, Without<BoardTile>),
     >,
     mut board: ResMut<Board>,
@@ -65,8 +67,9 @@ fn player_move_listener(
             }
         }
 
+        let mut move_succeeded = false;
         if let Some((new_pos, old_occ_clone)) = maybe_move_data {
-            if let Ok((mut mover_pos, mut mover_transform)) = player_query.get_mut(event.mover_id) {
+            if let Ok((mut mover_pos, mut last_action, mut mover_transform)) = player_query.get_mut(event.mover_id) {
                 if let Some((_, new_tile_occ)) =
                     board.looking_at_mut(&mover_pos, &event.mover_facing)
                 {
@@ -82,7 +85,16 @@ fn player_move_listener(
                         x: new_pos.x,
                         y: new_pos.y,
                     };
+
+                    // log last action taken for action cost calculation
+                    *last_action = PlayerActionType::Move;
+                    move_succeeded = true;
                 }
+            }
+        }
+        if !move_succeeded {
+            if let Ok((_, mut last_action, _)) = player_query.get_mut(event.mover_id) {
+            *last_action = PlayerActionType::Idle;
             }
         }
     }
@@ -92,17 +104,20 @@ fn player_eat_listener(
     mut commands: Commands,
     mut eat_events: EventReader<EatEvent>,
     mut board: ResMut<Board>,
-    mut player_query: Query<(&BoardPosition, &mut Vitals), (With<Player>, Without<Food>)>,
-    food_query: Query<&Hunger, (With<Food>, Without<Player>)>,
+    mut player_query: Query<(&BoardPosition, &mut PlayerActionType, &mut Vitals), (With<Player>, Without<Food>)>,
+    food_query: Query<&Energy, (With<Food>, Without<Player>)>,
 ) {
     for event in eat_events.read() {
-        if let Ok((gorger_pos, mut gorger_vitals)) = player_query.get_mut(event.gorger_id) {
+        if let Ok((gorger_pos, mut last_action, mut gorger_vitals)) = player_query.get_mut(event.gorger_id) {
+            *last_action = PlayerActionType::Idle;
             if let Some((_, occ)) = board.looking_at_mut(gorger_pos, &event.gorger_facing) {
                 if let OccupantType::Food(food_id) = *occ {
-                    if let Ok(food_hunger) = food_query.get(food_id) {
-                        gorger_vitals.hunger.value += food_hunger.value;
+                    if let Ok(food_energy) = food_query.get(food_id) {
+                        gorger_vitals.energy.value += food_energy.value;
                         commands.entity(food_id).despawn_recursive();
                         *occ = OccupantType::Empty;
+
+                        *last_action = PlayerActionType::Eat;
                     }
                 }
             }
@@ -113,17 +128,17 @@ fn player_eat_listener(
 fn update_vitals_listener(
     mut uv_events: EventReader<UpdateVitalsEvent>,
     mut player_query: Query<
-        (&mut Vitals, &mut Handle<ColorMaterial>),
+        (&mut Vitals, &mut Handle<ColorMaterial>, &PlayerActionType),
         (With<Player>, Without<BoardTile>),
     >,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     for event in uv_events.read() {
-        if let Ok((mut hungerer_vitals, mut hungerer_color)) =
+        if let Ok((mut hungerer_vitals, mut hungerer_color, last_action)) =
             player_query.get_mut(event.hungerer_id)
         {
-            hungerer_vitals.hunger.value -= 1;
-            if hungerer_vitals.hunger.value == 0 {
+            hungerer_vitals.energy.value = hungerer_vitals.energy.value.saturating_sub(action_cost(last_action));
+            if hungerer_vitals.energy.value == 0 {
                 hungerer_vitals.status = PlayerStatus::DedPepega;
                 *hungerer_color = materials.add(Color::rgb(0., 0., 0.));
             }
@@ -141,6 +156,7 @@ fn player_kill_listener(
         (
             &BoardPosition,
             &mut Vitals,
+            &mut PlayerActionType,
             &mut Handle<ColorMaterial>,
             &mut Mesh2dHandle,
         ),
@@ -148,12 +164,13 @@ fn player_kill_listener(
     >,
 ) {
     for event in kill_event.read() {
-        if let Ok((killer_pos, _, _, _)) = player_query.get(event.killer_id) {
+        let mut kill_succeeded = false;
+        if let Ok((killer_pos, _, _, _, _)) = player_query.get(event.killer_id) {
             if let Some((_, victim_tile_occ)) =
                 board.looking_at_mut(killer_pos, &event.killer_facing)
             {
                 if let OccupantType::Player(victim_id) = *victim_tile_occ {
-                    if let Ok((victim_pos, victim_vitals, _, _)) = player_query.get_mut(victim_id) {
+                    if let Ok((victim_pos, victim_vitals, _, _, _)) = player_query.get_mut(victim_id) {
                         if victim_vitals.status == PlayerStatus::Alive {
                             *victim_tile_occ = OccupantType::Empty;
                             commands.entity(victim_id).despawn_recursive();
@@ -166,9 +183,16 @@ fn player_kill_listener(
                                 &mut meshes,
                             )
                             .unwrap();
+                            kill_succeeded = true;
                         }
                     }
                 }
+            }
+        }
+        if let Ok((_, _, mut last_killer_action, _, _)) = player_query.get_mut(event.killer_id) {
+            *last_killer_action = match kill_succeeded {
+                true => PlayerActionType::Kill,
+                false => PlayerActionType::Idle,
             }
         }
     }
@@ -177,12 +201,12 @@ fn player_kill_listener(
 fn player_turn_listener(
     mut turn_events: EventReader<TurnEvent>,
     mut player_query: Query<
-        (&mut FacingDirection, &mut Transform),
+        (&mut FacingDirection, &mut PlayerActionType, &mut Transform),
         (With<Player>, Without<BoardTile>),
     >,
 ) {
     for event in turn_events.read() {
-        if let Ok((mut turner_facing_mut, mut turner_transform)) =
+        if let Ok((mut turner_facing_mut, mut last_action, mut turner_transform)) =
             player_query.get_mut(event.turner_id)
         {
             let turn_rad = match event.turn_direction {
@@ -194,6 +218,7 @@ fn player_turn_listener(
             *turner_facing_mut =
                 position_after_turn(&event.turner_facing, event.turn_direction).unwrap();
             turner_transform.rotate_z(turn_rad);
+            *last_action = PlayerActionType::Turn(event.turn_direction);
         }
     }
 }
