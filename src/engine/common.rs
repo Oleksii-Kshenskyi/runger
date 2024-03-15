@@ -1,9 +1,10 @@
 use std::{collections::HashMap, error::Error, fmt::Display};
 
 use bevy::prelude::*;
+use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 
 use crate::engine::config::*;
-use crate::simulation::players::FacingDirection;
+use crate::simulation::players::{FacingDirection, Food, Hunger};
 
 #[derive(Debug)]
 pub struct RungerError {
@@ -123,4 +124,74 @@ pub struct BoardTile;
 pub enum FoodType {
     Meal,
     DeadMeat,
+}
+
+#[derive(Bundle)]
+pub struct FoodBundle {
+    pub board_pos: BoardPosition,
+    pub energy_value: Hunger,
+    pub sprite: MaterialMesh2dBundle<ColorMaterial>,
+}
+
+#[derive(Default, Clone, Copy, States, Debug, Hash, PartialEq, Eq)]
+pub enum VisualizerState {
+    #[default]
+    SimulationRunning,
+    GenerationFinished,
+}
+
+pub fn grid_to_world(grid_pos: u32) -> f32 {
+    grid_pos as f32 * (DEFAULT_TILE_SIZE + default_tile_margin())
+        - DEFAULT_GRID_SIZE as f32 * (DEFAULT_TILE_SIZE + default_tile_margin()) / 2.0
+        + DEFAULT_TILE_SIZE / 2.0
+}
+
+pub fn place_food_at(
+    commands: &mut Commands,
+    pos: BoardPosition,
+    food_type: FoodType,
+    board: &mut ResMut<Board>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    meshes: &mut ResMut<Assets<Mesh>>,
+) -> Result<(), Box<dyn Error>> {
+    let (energy_value, food_color) = match food_type {
+        FoodType::Meal => (default_food_value(), Color::rgb(1., 0.5, 0.)),
+        FoodType::DeadMeat => (default_player_food_value(), Color::rgb(0., 0., 0.)),
+    };
+
+    let mesh = meshes.add(Circle {
+        radius: default_entity_size() / 2.,
+    });
+    if let Some(occupant) = board.occ_at_mut(&pos) {
+        if *occupant != OccupantType::Empty {
+            return Err(rerror("Trying to place food on a non-empty tile!"));
+        };
+        *occupant = OccupantType::Food(
+            commands
+                .spawn((
+                    FoodBundle {
+                        energy_value: Hunger::new(energy_value),
+                        board_pos: pos,
+                        sprite: MaterialMesh2dBundle {
+                            mesh: Mesh2dHandle(mesh),
+                            material: materials.add(food_color),
+                            transform: Transform::from_xyz(
+                                grid_to_world(pos.x),
+                                grid_to_world(pos.y),
+                                0.9,
+                            ),
+                            ..default()
+                        },
+                    },
+                    Food,
+                ))
+                .id(),
+        );
+        return Ok(());
+    }
+
+    Err(rerror(&format!(
+        "place_food_at(): no entry on occupant at {:?}...",
+        &pos
+    )))
 }
