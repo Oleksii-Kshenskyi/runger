@@ -48,12 +48,11 @@ pub enum OccupantType {
 }
 
 #[derive(Resource)]
-pub struct BoardState {
-    tiles: HashMap<BoardPosition, Entity>,
+pub struct Board {
     occupants: HashMap<BoardPosition, OccupantType>,
 }
 
-impl BoardState {
+impl Board {
     fn looking_pos(player_pos: &BoardPosition, is_facing: &FacingDirection) -> (i32, i32) {
         match (&player_pos, is_facing) {
             (BoardPosition { x, y }, FacingDirection::Up) => (*x as i32, (*y as i32 + 1)),
@@ -72,7 +71,6 @@ impl BoardState {
 
     pub fn new() -> Self {
         Self {
-            tiles: HashMap::new(),
             occupants: HashMap::new(),
         }
     }
@@ -90,7 +88,7 @@ impl BoardState {
         looker_pos: &BoardPosition,
         looker_facing: &FacingDirection,
     ) -> Option<(BoardPosition, &OccupantType)> {
-        let looking_pos = BoardState::looking_pos(looker_pos, looker_facing);
+        let looking_pos = Board::looking_pos(looker_pos, looker_facing);
         if Self::pos_within_bounds(&looking_pos) {
             let pos = BoardPosition::new(looking_pos.0 as u32, looking_pos.1 as u32);
             self.occupants.get(&pos).map(|o| (pos, o))
@@ -104,17 +102,13 @@ impl BoardState {
         looker_pos: &BoardPosition,
         looker_facing: &FacingDirection,
     ) -> Option<(BoardPosition, &mut OccupantType)> {
-        let looking_pos = BoardState::looking_pos(looker_pos, looker_facing);
+        let looking_pos = Board::looking_pos(looker_pos, looker_facing);
         if Self::pos_within_bounds(&looking_pos) {
             let pos = BoardPosition::new(looking_pos.0 as u32, looking_pos.1 as u32);
             self.occupants.get_mut(&pos).map(|o| (pos, o))
         } else {
             None
         }
-    }
-
-    pub fn add_tile(&mut self, pos: BoardPosition, tile_id: Entity) {
-        self.tiles.insert(pos, tile_id);
     }
 
     pub fn add_occ(&mut self, pos: BoardPosition, occ: OccupantType) {
