@@ -34,11 +34,11 @@ pub enum PlayerStatus {
 }
 
 #[derive(Component, Debug)]
-pub struct Hunger {
+pub struct Energy {
     pub value: u32,
 }
 
-impl Hunger {
+impl Energy {
     pub fn new(value: u32) -> Self {
         Self { value }
     }
@@ -46,14 +46,14 @@ impl Hunger {
 
 #[derive(Component, Debug)]
 pub struct Vitals {
-    pub hunger: Hunger,
+    pub energy: Energy,
     pub status: PlayerStatus,
 }
 
 impl Vitals {
-    pub fn new(hunger: u32) -> Self {
+    pub fn new(energy_value: u32) -> Self {
         Self {
-            hunger: Hunger::new(hunger),
+            energy: Energy::new(energy_value),
             status: PlayerStatus::Alive,
         }
     }

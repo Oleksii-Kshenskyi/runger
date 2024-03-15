@@ -29,7 +29,7 @@ pub fn random_player_action() -> PlayerActionType {
     }
 }
 
-pub fn random_hunger_start() -> u32 {
+pub fn random_energy_start() -> u32 {
     let mut rng = thread_rng();
-    rng.gen_range(default_hunger_min()..=default_hunger_max())
+    rng.gen_range(default_energy_min()..=default_energy_max())
 }
