@@ -12,5 +12,5 @@ opt-level=3
 debug=false
 
 [dependencies]
-bevy = "0.13.0"
+bevy = "0.13.1"
 rand = "0.8.5"

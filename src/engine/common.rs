@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 
 use crate::engine::config::*;
-use crate::simulation::players::{FacingDirection, Food, Energy};
+use crate::simulation::players::{Energy, FacingDirection, Food, LineOfSight};
 
 #[derive(Debug)]
 pub struct RungerError {
@@ -194,4 +194,26 @@ pub fn place_food_at(
         "place_food_at(): no entry on occupant at {:?}...",
         &pos
     )))
+}
+
+pub fn get_los_tiles(
+    scanner_pos: &BoardPosition,
+    scanner_facing: &FacingDirection,
+    scanner_los: &LineOfSight,
+    board: &Board,
+) -> Vec<BoardPosition> {
+    let mut los_tiles = vec![];
+
+    let mut pos_index = *scanner_pos;
+    for _ in 0..scanner_los.length {
+        match board.looking_at(&pos_index, scanner_facing) {
+            Some((pos, _)) => {
+                los_tiles.push(pos);
+                pos_index = pos;
+            }
+            None => break,
+        }
+    }
+
+    los_tiles
 }
