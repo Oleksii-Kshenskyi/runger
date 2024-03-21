@@ -25,6 +25,7 @@ pub enum PlayerActionType {
     Turn(FacingDirection),
     Eat,
     Kill,
+    ScanLOS,
 }
 
 #[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]
@@ -57,6 +58,17 @@ impl Vitals {
             status: PlayerStatus::Alive,
         }
     }
+}
+
+#[derive(Component, Debug, Clone, Copy)]
+pub enum LOSType {
+    StraightLine,
+}
+
+#[derive(Component, Debug, Clone, Copy)]
+pub struct LineOfSight {
+    pub los_type: LOSType,
+    pub length: u32,
 }
 
 pub fn position_after_turn(

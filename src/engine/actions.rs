@@ -36,6 +36,19 @@ pub struct TurnEvent {
 }
 
 #[derive(Event, Debug)]
+pub struct ScanLOSEvent {
+    pub scanner_id: Entity,
+    pub scanner_facing: FacingDirection,
+}
+
+#[derive(Event, Debug)]
+pub struct LOSReportEvent {
+    pub scanner_id: Entity,
+    pub scanned_type: OccupantType,
+    pub scanned_pos: BoardPosition,
+}
+
+#[derive(Event, Debug)]
 pub struct UpdateVitalsEvent {
     pub hungerer_id: Entity,
 }
@@ -69,7 +82,9 @@ fn player_move_listener(
 
         let mut move_succeeded = false;
         if let Some((new_pos, old_occ_clone)) = maybe_move_data {
-            if let Ok((mut mover_pos, mut last_action, mut mover_transform)) = player_query.get_mut(event.mover_id) {
+            if let Ok((mut mover_pos, mut last_action, mut mover_transform)) =
+                player_query.get_mut(event.mover_id)
+            {
                 if let Some((_, new_tile_occ)) =
                     board.looking_at_mut(&mover_pos, &event.mover_facing)
                 {
@@ -94,7 +109,7 @@ fn player_move_listener(
         }
         if !move_succeeded {
             if let Ok((_, mut last_action, _)) = player_query.get_mut(event.mover_id) {
-            *last_action = PlayerActionType::Idle;
+                *last_action = PlayerActionType::Idle;
             }
         }
     }
@@ -104,11 +119,16 @@ fn player_eat_listener(
     mut commands: Commands,
     mut eat_events: EventReader<EatEvent>,
     mut board: ResMut<Board>,
-    mut player_query: Query<(&BoardPosition, &mut PlayerActionType, &mut Vitals), (With<Player>, Without<Food>)>,
+    mut player_query: Query<
+        (&BoardPosition, &mut PlayerActionType, &mut Vitals),
+        (With<Player>, Without<Food>),
+    >,
     food_query: Query<&Energy, (With<Food>, Without<Player>)>,
 ) {
     for event in eat_events.read() {
-        if let Ok((gorger_pos, mut last_action, mut gorger_vitals)) = player_query.get_mut(event.gorger_id) {
+        if let Ok((gorger_pos, mut last_action, mut gorger_vitals)) =
+            player_query.get_mut(event.gorger_id)
+        {
             *last_action = PlayerActionType::Idle;
             if let Some((_, occ)) = board.looking_at_mut(gorger_pos, &event.gorger_facing) {
                 if let OccupantType::Food(food_id) = *occ {
@@ -137,7 +157,10 @@ fn update_vitals_listener(
         if let Ok((mut hungerer_vitals, mut hungerer_color, last_action)) =
             player_query.get_mut(event.hungerer_id)
         {
-            hungerer_vitals.energy.value = hungerer_vitals.energy.value.saturating_sub(action_cost(last_action));
+            hungerer_vitals.energy.value = hungerer_vitals
+                .energy
+                .value
+                .saturating_sub(action_cost(last_action));
             if hungerer_vitals.energy.value == 0 {
                 hungerer_vitals.status = PlayerStatus::DedPepega;
                 *hungerer_color = materials.add(Color::rgb(0., 0., 0.));
@@ -170,7 +193,9 @@ fn player_kill_listener(
                 board.looking_at_mut(killer_pos, &event.killer_facing)
             {
                 if let OccupantType::Player(victim_id) = *victim_tile_occ {
-                    if let Ok((victim_pos, victim_vitals, _, _, _)) = player_query.get_mut(victim_id) {
+                    if let Ok((victim_pos, victim_vitals, _, _, _)) =
+                        player_query.get_mut(victim_id)
+                    {
                         if victim_vitals.status == PlayerStatus::Alive {
                             *victim_tile_occ = OccupantType::Empty;
                             commands.entity(victim_id).despawn_recursive();
@@ -223,11 +248,54 @@ fn player_turn_listener(
     }
 }
 
+/// What should this system do?
+/// It should scan line of sight of the current player and determine if
+/// there is something within the line of sight.
+/// For now, we're doing simple straight line directly in front of the player,
+/// but in the future there should be more options for different types of LOS, like circle, cone etc.
+/// If there IS something within the player's line of sight, report it via firing a different event. All the systems that need LOS are going to respond with subscribing to those.
+/// In the new event, we need to basically report OccupantType and BoardPosition of what we're seeing (and don't forget the scanner's Entity ID itself).
+fn player_scan_los_listener(
+    mut scanlos_events: EventReader<ScanLOSEvent>,
+    mut losreport_events: EventWriter<LOSReportEvent>,
+    board: Res<Board>,
+    mut player_query: Query<(&BoardPosition, &mut PlayerActionType, &LineOfSight), With<Player>>,
+) {
+    for event in scanlos_events.read() {
+        let maybe_scanner = if let Ok((pos, _, los)) = player_query.get(event.scanner_id) {
+            Some((*pos, *los))
+        } else {
+            None
+        };
+        if let Some((pos, los)) = maybe_scanner {
+            let tiles_to_scan = get_los_tiles(&pos, &event.scanner_facing, &los, &board);
+
+            for pos in tiles_to_scan {
+                if let Some(occ) = board.occ_at(&pos) {
+                    if *occ != OccupantType::Empty {
+                        losreport_events.send(LOSReportEvent {
+                            scanned_pos: pos,
+                            scanned_type: *occ,
+                            scanner_id: event.scanner_id,
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Ok((_, mut last_action, _)) = player_query.get_mut(event.scanner_id) {
+            *last_action = PlayerActionType::ScanLOS;
+        }
+    }
+}
+
 fn advance_players(
     mut kill_event: EventWriter<KillEvent>,
     mut eat_event: EventWriter<EatEvent>,
     mut move_event: EventWriter<MoveEvent>,
     mut turn_event: EventWriter<TurnEvent>,
+    mut los_event: EventWriter<ScanLOSEvent>,
     mut update_vitals_event: EventWriter<UpdateVitalsEvent>,
     mut player_query: Query<
         (Entity, &BoardPosition, &mut FacingDirection, &Vitals),
@@ -273,6 +341,12 @@ fn advance_players(
                     killer_facing: *direction,
                 });
             }
+            PlayerActionType::ScanLOS => {
+                los_event.send(ScanLOSEvent {
+                    scanner_id: player_id,
+                    scanner_facing: *direction,
+                });
+            }
             act => unreachable!(
                 "Incorrect action type while trying to advance players: {:#?}",
                 act
@@ -292,6 +366,8 @@ impl Plugin for PlayerActionPlugin {
             .add_event::<EatEvent>()
             .add_event::<MoveEvent>()
             .add_event::<TurnEvent>()
+            .add_event::<ScanLOSEvent>()
+            .add_event::<LOSReportEvent>()
             .add_event::<UpdateVitalsEvent>()
             .add_systems(
                 FixedUpdate,
@@ -304,6 +380,7 @@ impl Plugin for PlayerActionPlugin {
                     player_move_listener,
                     player_eat_listener,
                     player_kill_listener,
+                    player_scan_los_listener,
                 )
                     .chain()
                     .run_if(in_state(VisualizerState::SimulationRunning))

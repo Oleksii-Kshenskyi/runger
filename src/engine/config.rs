@@ -51,8 +51,13 @@ pub fn action_cost(action_type: &PlayerActionType) -> u32 {
     match *action_type {
         PlayerActionType::Idle => 1,
         PlayerActionType::Turn(_) => 1,
+        PlayerActionType::ScanLOS => 1,
         PlayerActionType::Eat => 2,
         PlayerActionType::Move => 3,
         PlayerActionType::Kill => 50,
     }
 }
+
+// LINE OF SIGHT MECHANICS
+
+pub const DEFAULT_LOS_LENGTH: u32 = 3;
