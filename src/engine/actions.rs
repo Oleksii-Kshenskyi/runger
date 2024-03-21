@@ -7,7 +7,7 @@ use crate::engine::common::*;
 use crate::engine::random::random_player_action;
 use crate::simulation::players::*;
 
-use super::config::action_cost;
+use super::config::{action_cost, DEFAULT_COLOR_ON_LOS_DETECT};
 
 #[derive(Event, Debug)]
 pub struct KillEvent {
@@ -46,6 +46,12 @@ pub struct LOSReportEvent {
     pub scanner_id: Entity,
     pub scanned_type: OccupantType,
     pub scanned_pos: BoardPosition,
+}
+
+#[derive(Event, Debug)]
+pub struct RestoreColorsEvent {
+    pub entity_id: Entity,
+    pub old_color: Color,
 }
 
 #[derive(Event, Debug)]
@@ -290,6 +296,68 @@ fn player_scan_los_listener(
     }
 }
 
+fn player_los_report_listener(
+    mut los_report_events: EventReader<LOSReportEvent>,
+    mut restore_colors_event: EventWriter<RestoreColorsEvent>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut color_query: Query<&mut Handle<ColorMaterial>>,
+) {
+    for event in los_report_events.read() {
+        if let Ok(mut scanner_color) = color_query.get_mut(event.scanner_id) {
+            let current_color = materials.get(scanner_color.clone()).unwrap().color;
+            if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
+                restore_colors_event.send(RestoreColorsEvent {
+                    entity_id: event.scanner_id,
+                    old_color: current_color,
+                });
+                *scanner_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
+            }
+        }
+        match event.scanned_type {
+            OccupantType::Player(scanned_id) => {
+                if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
+                    let current_color = materials.get(scanned_color.clone()).unwrap().color;
+                    if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
+                        restore_colors_event.send(RestoreColorsEvent {
+                            entity_id: scanned_id,
+                            old_color: current_color,
+                        });
+                        *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
+                    }
+                }
+            }
+            OccupantType::Food(scanned_id) => {
+                if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
+                    let current_color = materials.get(scanned_color.clone()).unwrap().color;
+                    if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
+                        restore_colors_event.send(RestoreColorsEvent {
+                            entity_id: scanned_id,
+                            old_color: current_color,
+                        });
+                        *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
+                    }
+                }
+            }
+            err_occ => unreachable!(
+                "Changing color on LOS: this entity type should not be scanned: {:?}",
+                err_occ
+            ),
+        }
+    }
+}
+
+fn restore_colors_listener(
+    mut restore_colors_events: EventReader<RestoreColorsEvent>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut color_query: Query<&mut Handle<ColorMaterial>>,
+) {
+    for event in restore_colors_events.read() {
+        if let Ok(mut color) = color_query.get_mut(event.entity_id) {
+            *color = materials.add(event.old_color);
+        }
+    }
+}
+
 fn advance_players(
     mut kill_event: EventWriter<KillEvent>,
     mut eat_event: EventWriter<EatEvent>,
@@ -369,6 +437,7 @@ impl Plugin for PlayerActionPlugin {
             .add_event::<ScanLOSEvent>()
             .add_event::<LOSReportEvent>()
             .add_event::<UpdateVitalsEvent>()
+            .add_event::<RestoreColorsEvent>()
             .add_systems(
                 FixedUpdate,
                 (advance_players).run_if(in_state(VisualizerState::SimulationRunning)),
@@ -381,6 +450,7 @@ impl Plugin for PlayerActionPlugin {
                     player_eat_listener,
                     player_kill_listener,
                     player_scan_los_listener,
+                    player_los_report_listener,
                 )
                     .chain()
                     .run_if(in_state(VisualizerState::SimulationRunning))
@@ -389,6 +459,10 @@ impl Plugin for PlayerActionPlugin {
             .add_systems(
                 PostUpdate,
                 update_vitals_listener.run_if(in_state(VisualizerState::SimulationRunning)),
+            )
+            .add_systems(
+                FixedPostUpdate,
+                restore_colors_listener.after(player_los_report_listener),
             );
     }
 }
