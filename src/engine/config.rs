@@ -43,9 +43,6 @@ pub fn default_energy_max() -> u32 {
 pub fn default_food_value() -> u32 {
     TURNS_PER_GEN / 3 * 2
 }
-pub fn default_player_food_value() -> u32 {
-    default_food_value() / 2 + 1
-}
 
 // ACTIONS
 
