@@ -26,6 +26,7 @@ pub struct MoveEvent {
     pub mover_id: Entity,
     pub mover_pos: BoardPosition,
     pub mover_facing: FacingDirection,
+    pub movement_direction: FacingDirection,
 }
 
 #[derive(Event, Debug)]
@@ -59,6 +60,73 @@ pub struct UpdateVitalsEvent {
     pub hungerer_id: Entity,
 }
 
+fn move_player(
+    board: &mut Board,
+    mover_id: Entity,
+    mover_pos: &BoardPosition,
+    mover_facing: &FacingDirection,
+    movement_direction: &FacingDirection,
+    player_query: &mut Query<
+        (&mut BoardPosition, &mut PlayerActionType, &mut Transform),
+        (With<Player>, Without<BoardTile>),
+    >,
+) -> bool {
+    let movement_fn = match movement_direction {
+        FacingDirection::Up => Board::looking_at,
+        FacingDirection::Down => Board::disengage_to,
+        _ => unreachable!("ERROR: ILLEGAL MOVE: can only move forwards or backwards."),
+    };
+    let movement_fn_mut = match movement_direction {
+        FacingDirection::Up => Board::looking_at_mut,
+        FacingDirection::Down => Board::disengage_to_mut,
+        _ => unreachable!("ERROR: ILLEGAL MOVE (MUT): can only move forwards or backwards."),
+    };
+
+    let mut maybe_move_data: Option<(BoardPosition, OccupantType)> = None;
+    if let Some((new_pos, new_tile_occ)) = movement_fn(board, &mover_pos, &mover_facing) {
+        if let Some(old_tile_occ) = board.occ_at(&mover_pos) {
+            if *new_tile_occ == OccupantType::Empty {
+                // get data necessary for the move via immutable queries
+                maybe_move_data = Some((new_pos, *old_tile_occ));
+            }
+        }
+    }
+
+    if maybe_move_data.is_some() {
+        if let Some(old_occ_mut) = board.occ_at_mut(&mover_pos) {
+            *old_occ_mut = OccupantType::Empty; // deoccupy the old tile if the move is valid
+        }
+    }
+
+    let mut move_succeeded = false;
+    if let Some((new_pos, old_occ_clone)) = maybe_move_data {
+        if let Ok((mut mover_pos, mut last_action, mut mover_transform)) =
+            player_query.get_mut(mover_id)
+        {
+            if let Some((_, new_tile_occ)) = movement_fn_mut(board, &mover_pos, &mover_facing) {
+                // move player occupancy to the new position
+                *new_tile_occ = old_occ_clone;
+
+                // move player graphics (transform)
+                mover_transform.translation =
+                    Vec3::new(grid_to_world(new_pos.x), grid_to_world(new_pos.y), 0.1);
+
+                // update new player board position
+                *mover_pos = BoardPosition {
+                    x: new_pos.x,
+                    y: new_pos.y,
+                };
+
+                // log last action taken for action cost calculation
+                *last_action = PlayerActionType::Move;
+                move_succeeded = true;
+            }
+        }
+    }
+
+    move_succeeded
+}
+
 fn player_move_listener(
     mut move_events: EventReader<MoveEvent>,
     mut player_query: Query<
@@ -68,54 +136,21 @@ fn player_move_listener(
     mut board: ResMut<Board>,
 ) {
     for event in move_events.read() {
-        let mut maybe_move_data: Option<(BoardPosition, OccupantType)> = None;
-        if let Some((new_pos, new_tile_occ)) =
-            board.looking_at(&event.mover_pos, &event.mover_facing)
-        {
-            if let Some(old_tile_occ) = board.occ_at(&event.mover_pos) {
-                if *new_tile_occ == OccupantType::Empty {
-                    // get data necessary for the move via immutable queries
-                    maybe_move_data = Some((new_pos, *old_tile_occ));
-                }
-            }
+        if event.movement_direction != FacingDirection::Up {
+            continue;
         }
-
-        if maybe_move_data.is_some() {
-            if let Some(old_occ_mut) = board.occ_at_mut(&event.mover_pos) {
-                *old_occ_mut = OccupantType::Empty; // deoccupy the old tile if the move is valid
-            }
-        }
-
-        let mut move_succeeded = false;
-        if let Some((new_pos, old_occ_clone)) = maybe_move_data {
-            if let Ok((mut mover_pos, mut last_action, mut mover_transform)) =
-                player_query.get_mut(event.mover_id)
-            {
-                if let Some((_, new_tile_occ)) =
-                    board.looking_at_mut(&mover_pos, &event.mover_facing)
-                {
-                    // move player occupancy to the new position
-                    *new_tile_occ = old_occ_clone;
-
-                    // move player graphics (transform)
-                    mover_transform.translation =
-                        Vec3::new(grid_to_world(new_pos.x), grid_to_world(new_pos.y), 0.1);
-
-                    // update new player board position
-                    *mover_pos = BoardPosition {
-                        x: new_pos.x,
-                        y: new_pos.y,
-                    };
-
-                    // log last action taken for action cost calculation
-                    *last_action = PlayerActionType::Move;
-                    move_succeeded = true;
-                }
-            }
-        }
-        if !move_succeeded {
-            if let Ok((_, mut last_action, _)) = player_query.get_mut(event.mover_id) {
-                *last_action = PlayerActionType::Idle;
+        let ok = move_player(
+            &mut board,
+            event.mover_id,
+            &event.mover_pos,
+            &event.mover_facing,
+            &FacingDirection::Up,
+            &mut player_query,
+        );
+        if let Ok((_, mut last_action, _)) = player_query.get_mut(event.mover_id) {
+            match ok {
+                true => *last_action = PlayerActionType::Move,
+                false => *last_action = PlayerActionType::Idle,
             }
         }
     }
@@ -254,6 +289,35 @@ fn player_turn_listener(
     }
 }
 
+fn player_disengage_listener(
+    mut disengage_events: EventReader<MoveEvent>,
+    mut player_query: Query<
+        (&mut BoardPosition, &mut PlayerActionType, &mut Transform),
+        (With<Player>, Without<BoardTile>),
+    >,
+    mut board: ResMut<Board>,
+) {
+    for event in disengage_events.read() {
+        if event.movement_direction != FacingDirection::Down {
+            continue;
+        }
+        let ok = move_player(
+            &mut board,
+            event.mover_id,
+            &event.mover_pos,
+            &event.mover_facing,
+            &FacingDirection::Down,
+            &mut player_query,
+        );
+        if let Ok((_, mut last_action, _)) = player_query.get_mut(event.mover_id) {
+            match ok {
+                true => *last_action = PlayerActionType::Disengage,
+                false => *last_action = PlayerActionType::Idle,
+            }
+        }
+    }
+}
+
 /// What should this system do?
 /// It should scan line of sight of the current player and determine if
 /// there is something within the line of sight.
@@ -381,6 +445,7 @@ fn advance_players(
                     mover_id: player_id,
                     mover_pos: *player_pos,
                     mover_facing: *direction,
+                    movement_direction: FacingDirection::Up,
                 });
             }
             PlayerActionType::Turn(FacingDirection::Right) => {
@@ -415,6 +480,14 @@ fn advance_players(
                     scanner_facing: *direction,
                 });
             }
+            PlayerActionType::Disengage => {
+                move_event.send(MoveEvent {
+                    mover_id: player_id,
+                    mover_facing: *direction,
+                    mover_pos: *player_pos,
+                    movement_direction: FacingDirection::Down,
+                });
+            }
             act => unreachable!(
                 "Incorrect action type while trying to advance players: {:#?}",
                 act
@@ -446,6 +519,7 @@ impl Plugin for PlayerActionPlugin {
                 Update,
                 (
                     player_turn_listener,
+                    player_disengage_listener,
                     player_move_listener,
                     player_eat_listener,
                     player_kill_listener,
