@@ -26,6 +26,7 @@ pub struct MoveEvent {
     pub mover_id: Entity,
     pub mover_pos: BoardPosition,
     pub mover_facing: FacingDirection,
+    pub movement_direction: FacingDirection,
 }
 
 #[derive(Event, Debug)]
@@ -52,13 +53,6 @@ pub struct LOSReportEvent {
 pub struct RestoreColorsEvent {
     pub entity_id: Entity,
     pub old_color: Color,
-}
-
-#[derive(Event, Debug)]
-pub struct DisengageEvent {
-    pub coward_id: Entity,
-    pub coward_facing: FacingDirection,
-    pub coward_pos: BoardPosition,
 }
 
 #[derive(Event, Debug)]
@@ -142,6 +136,9 @@ fn player_move_listener(
     mut board: ResMut<Board>,
 ) {
     for event in move_events.read() {
+        if event.movement_direction != FacingDirection::Up {
+            continue;
+        }
         let ok = move_player(
             &mut board,
             event.mover_id,
@@ -293,7 +290,7 @@ fn player_turn_listener(
 }
 
 fn player_disengage_listener(
-    mut disengage_events: EventReader<DisengageEvent>,
+    mut disengage_events: EventReader<MoveEvent>,
     mut player_query: Query<
         (&mut BoardPosition, &mut PlayerActionType, &mut Transform),
         (With<Player>, Without<BoardTile>),
@@ -301,15 +298,18 @@ fn player_disengage_listener(
     mut board: ResMut<Board>,
 ) {
     for event in disengage_events.read() {
+        if event.movement_direction != FacingDirection::Down {
+            continue;
+        }
         let ok = move_player(
             &mut board,
-            event.coward_id,
-            &event.coward_pos,
-            &event.coward_facing,
+            event.mover_id,
+            &event.mover_pos,
+            &event.mover_facing,
             &FacingDirection::Down,
             &mut player_query,
         );
-        if let Ok((_, mut last_action, _)) = player_query.get_mut(event.coward_id) {
+        if let Ok((_, mut last_action, _)) = player_query.get_mut(event.mover_id) {
             match ok {
                 true => *last_action = PlayerActionType::Disengage,
                 false => *last_action = PlayerActionType::Idle,
@@ -428,7 +428,6 @@ fn advance_players(
     mut move_event: EventWriter<MoveEvent>,
     mut turn_event: EventWriter<TurnEvent>,
     mut los_event: EventWriter<ScanLOSEvent>,
-    mut disengage_event: EventWriter<DisengageEvent>,
     mut update_vitals_event: EventWriter<UpdateVitalsEvent>,
     mut player_query: Query<
         (Entity, &BoardPosition, &mut FacingDirection, &Vitals),
@@ -446,6 +445,7 @@ fn advance_players(
                     mover_id: player_id,
                     mover_pos: *player_pos,
                     mover_facing: *direction,
+                    movement_direction: FacingDirection::Up,
                 });
             }
             PlayerActionType::Turn(FacingDirection::Right) => {
@@ -481,10 +481,11 @@ fn advance_players(
                 });
             }
             PlayerActionType::Disengage => {
-                disengage_event.send(DisengageEvent {
-                    coward_id: player_id,
-                    coward_facing: *direction,
-                    coward_pos: *player_pos,
+                move_event.send(MoveEvent {
+                    mover_id: player_id,
+                    mover_facing: *direction,
+                    mover_pos: *player_pos,
+                    movement_direction: FacingDirection::Down,
                 });
             }
             act => unreachable!(
@@ -510,7 +511,6 @@ impl Plugin for PlayerActionPlugin {
             .add_event::<LOSReportEvent>()
             .add_event::<UpdateVitalsEvent>()
             .add_event::<RestoreColorsEvent>()
-            .add_event::<DisengageEvent>()
             .add_systems(
                 FixedUpdate,
                 (advance_players).run_if(in_state(VisualizerState::SimulationRunning)),
