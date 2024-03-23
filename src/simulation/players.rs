@@ -26,6 +26,7 @@ pub enum PlayerActionType {
     Eat,
     Kill,
     ScanLOS,
+    Disengage,
 }
 
 #[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]

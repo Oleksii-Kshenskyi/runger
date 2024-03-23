@@ -63,6 +63,37 @@ impl Board {
         }
     }
 
+    fn max_disengage_position(
+        &self,
+        pos: &BoardPosition,
+        is_facing: &FacingDirection,
+    ) -> Option<BoardPosition> {
+        let disengage_direction = match is_facing {
+            FacingDirection::Up => FacingDirection::Down,
+            FacingDirection::Left => FacingDirection::Right,
+            FacingDirection::Right => FacingDirection::Left,
+            FacingDirection::Down => FacingDirection::Up,
+        };
+        let mut cur_pos = *pos;
+        for _ in 1..=DISENGAGE_LENGTH {
+            let test_pos = Self::looking_pos(&cur_pos, &disengage_direction);
+            if Self::pos_within_bounds(&test_pos) {
+                let new_pos = BoardPosition::new(test_pos.0 as u32, test_pos.1 as u32);
+                if let Some(occ) = self.occ_at(&new_pos) {
+                    if *occ == OccupantType::Empty {
+                        cur_pos = new_pos;
+                    }
+                }
+            }
+        }
+
+        if cur_pos == *pos {
+            None
+        } else {
+            Some(cur_pos)
+        }
+    }
+
     fn pos_within_bounds(pos_to_check: &(i32, i32)) -> bool {
         pos_to_check.0 >= 0
             && pos_to_check.1 >= 0
@@ -107,6 +138,30 @@ impl Board {
         if Self::pos_within_bounds(&looking_pos) {
             let pos = BoardPosition::new(looking_pos.0 as u32, looking_pos.1 as u32);
             self.occupants.get_mut(&pos).map(|o| (pos, o))
+        } else {
+            None
+        }
+    }
+
+    pub fn disengage_to(
+        &self,
+        coward_pos: &BoardPosition,
+        coward_facing: &FacingDirection,
+    ) -> Option<(BoardPosition, &OccupantType)> {
+        if let Some(dpos) = self.max_disengage_position(coward_pos, coward_facing) {
+            self.occupants.get(&dpos).map(|o| (dpos, o))
+        } else {
+            None
+        }
+    }
+
+    pub fn disengage_to_mut(
+        &mut self,
+        coward_pos: &BoardPosition,
+        coward_facing: &FacingDirection,
+    ) -> Option<(BoardPosition, &mut OccupantType)> {
+        if let Some(dpos) = self.max_disengage_position(coward_pos, coward_facing) {
+            self.occupants.get_mut(&dpos).map(|o| (dpos, o))
         } else {
             None
         }

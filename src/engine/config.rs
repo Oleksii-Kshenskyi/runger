@@ -56,9 +56,12 @@ pub fn action_cost(action_type: &PlayerActionType) -> u32 {
         PlayerActionType::ScanLOS => 1,
         PlayerActionType::Eat => 2,
         PlayerActionType::Move => 3,
+        PlayerActionType::Disengage => 15,
         PlayerActionType::Kill => 50,
     }
 }
+
+pub const DISENGAGE_LENGTH: u32 = 3;
 
 // LINE OF SIGHT MECHANICS
 
