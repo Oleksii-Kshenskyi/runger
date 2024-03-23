@@ -178,7 +178,7 @@ pub struct BoardTile;
 #[derive(Debug)]
 pub enum FoodType {
     Meal,
-    DeadMeat,
+    DeadMeat(u32),
 }
 
 #[derive(Bundle)]
@@ -211,7 +211,7 @@ pub fn place_food_at(
 ) -> Result<(), Box<dyn Error>> {
     let (energy_value, food_color) = match food_type {
         FoodType::Meal => (default_food_value(), Color::rgb(1., 0.5, 0.)),
-        FoodType::DeadMeat => (default_player_food_value(), Color::rgb(0., 0., 0.)),
+        FoodType::DeadMeat(energy_val) => (energy_val, Color::rgb(0., 0., 0.)),
     };
 
     let mesh = meshes.add(Circle {

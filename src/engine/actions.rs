@@ -243,7 +243,7 @@ fn player_kill_listener(
                             place_food_at(
                                 &mut commands,
                                 *victim_pos,
-                                FoodType::DeadMeat,
+                                FoodType::DeadMeat(victim_vitals.energy.value),
                                 &mut board,
                                 &mut materials,
                                 &mut meshes,
