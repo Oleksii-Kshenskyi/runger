@@ -82,7 +82,7 @@ impl Board {
                 if let Some(occ) = self.occ_at(&new_pos) {
                     if *occ == OccupantType::Empty {
                         cur_pos = new_pos;
-                    }
+                    } else { break; }
                 }
             }
         }

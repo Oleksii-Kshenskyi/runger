@@ -83,8 +83,8 @@ fn move_player(
     };
 
     let mut maybe_move_data: Option<(BoardPosition, OccupantType)> = None;
-    if let Some((new_pos, new_tile_occ)) = movement_fn(board, &mover_pos, &mover_facing) {
-        if let Some(old_tile_occ) = board.occ_at(&mover_pos) {
+    if let Some((new_pos, new_tile_occ)) = movement_fn(board, mover_pos, mover_facing) {
+        if let Some(old_tile_occ) = board.occ_at(mover_pos) {
             if *new_tile_occ == OccupantType::Empty {
                 // get data necessary for the move via immutable queries
                 maybe_move_data = Some((new_pos, *old_tile_occ));
@@ -93,7 +93,7 @@ fn move_player(
     }
 
     if maybe_move_data.is_some() {
-        if let Some(old_occ_mut) = board.occ_at_mut(&mover_pos) {
+        if let Some(old_occ_mut) = board.occ_at_mut(mover_pos) {
             *old_occ_mut = OccupantType::Empty; // deoccupy the old tile if the move is valid
         }
     }
@@ -103,7 +103,7 @@ fn move_player(
         if let Ok((mut mover_pos, mut last_action, mut mover_transform)) =
             player_query.get_mut(mover_id)
         {
-            if let Some((_, new_tile_occ)) = movement_fn_mut(board, &mover_pos, &mover_facing) {
+            if let Some((_, new_tile_occ)) = movement_fn_mut(board, &mover_pos, mover_facing) {
                 // move player occupancy to the new position
                 *new_tile_occ = old_occ_clone;
 
