@@ -8,7 +8,7 @@ pub fn percent(value: u8) -> f32 {
     value as f32 * 0.01
 }
 
-// BOARD
+// BOARD (VISUALS)
 
 pub const DEFAULT_GRID_SIZE: u32 = 100;
 pub const DEFAULT_TILE_SIZE: f32 = 38.0;
@@ -24,6 +24,11 @@ pub fn default_tile_margin() -> f32 {
 pub fn default_player_count() -> u32 {
     ((DEFAULT_GRID_SIZE * DEFAULT_GRID_SIZE) as f32 * percent(30)) as u32
 }
+
+pub const DEFAULT_PLAYER_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
+pub const DEFAULT_FOOD_COLOR: Color = Color::rgb(1., 0.5, 0.);
+pub const DEAD_MEAT_COLOR: Color = Color::rgb(0., 0., 0.);
+pub const DEFAULT_COLOR_ON_LOS_DETECT: Color = Color::rgb(0.8, 1.0, 1.0);
 
 // SIMULATION
 
@@ -63,4 +68,3 @@ pub const DISENGAGE_LENGTH: u32 = 3;
 // LINE OF SIGHT MECHANICS
 
 pub const DEFAULT_LOS_LENGTH: u32 = 3;
-pub const DEFAULT_COLOR_ON_LOS_DETECT: Color = Color::rgb(0.8, 1.0, 1.0);
