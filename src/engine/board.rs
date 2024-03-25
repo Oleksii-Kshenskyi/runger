@@ -3,10 +3,7 @@ use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 
 use std::f32::consts::PI;
 
-use crate::{
-    engine::common::*, engine::config::*, engine::random::*,
-    simulation::players::*,
-};
+use crate::{engine::common::*, engine::config::*, engine::random::*, simulation::players::*};
 
 #[derive(Bundle)]
 pub struct BoardTileBundle {
@@ -17,6 +14,7 @@ pub struct BoardTileBundle {
 pub struct PlayerBundle {
     pub board_pos: BoardPosition,
     pub is_facing: FacingDirection,
+    pub los: LineOfSight,
     pub last_action_taken: PlayerActionType,
     pub vitals: Vitals,
     pub sprite: MaterialMesh2dBundle<ColorMaterial>,
@@ -87,6 +85,10 @@ fn spawn_players(
                             PlayerBundle {
                                 board_pos: random_pos,
                                 is_facing: FacingDirection::Right,
+                                los: LineOfSight {
+                                    los_type: LOSType::StraightLine,
+                                    length: DEFAULT_LOS_LENGTH,
+                                },
                                 last_action_taken: PlayerActionType::Idle,
                                 vitals: Vitals::new(random_energy_start()),
                                 sprite: MaterialMesh2dBundle {

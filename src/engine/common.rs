@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 
 use crate::engine::config::*;
-use crate::simulation::players::{FacingDirection, Food, Energy};
+use crate::simulation::players::{Energy, FacingDirection, Food, LineOfSight};
 
 #[derive(Debug)]
 pub struct RungerError {
@@ -63,6 +63,37 @@ impl Board {
         }
     }
 
+    fn max_disengage_position(
+        &self,
+        pos: &BoardPosition,
+        is_facing: &FacingDirection,
+    ) -> Option<BoardPosition> {
+        let disengage_direction = match is_facing {
+            FacingDirection::Up => FacingDirection::Down,
+            FacingDirection::Left => FacingDirection::Right,
+            FacingDirection::Right => FacingDirection::Left,
+            FacingDirection::Down => FacingDirection::Up,
+        };
+        let mut cur_pos = *pos;
+        for _ in 1..=DISENGAGE_LENGTH {
+            let test_pos = Self::looking_pos(&cur_pos, &disengage_direction);
+            if Self::pos_within_bounds(&test_pos) {
+                let new_pos = BoardPosition::new(test_pos.0 as u32, test_pos.1 as u32);
+                if let Some(occ) = self.occ_at(&new_pos) {
+                    if *occ == OccupantType::Empty {
+                        cur_pos = new_pos;
+                    }
+                }
+            }
+        }
+
+        if cur_pos == *pos {
+            None
+        } else {
+            Some(cur_pos)
+        }
+    }
+
     fn pos_within_bounds(pos_to_check: &(i32, i32)) -> bool {
         pos_to_check.0 >= 0
             && pos_to_check.1 >= 0
@@ -112,6 +143,30 @@ impl Board {
         }
     }
 
+    pub fn disengage_to(
+        &self,
+        coward_pos: &BoardPosition,
+        coward_facing: &FacingDirection,
+    ) -> Option<(BoardPosition, &OccupantType)> {
+        if let Some(dpos) = self.max_disengage_position(coward_pos, coward_facing) {
+            self.occupants.get(&dpos).map(|o| (dpos, o))
+        } else {
+            None
+        }
+    }
+
+    pub fn disengage_to_mut(
+        &mut self,
+        coward_pos: &BoardPosition,
+        coward_facing: &FacingDirection,
+    ) -> Option<(BoardPosition, &mut OccupantType)> {
+        if let Some(dpos) = self.max_disengage_position(coward_pos, coward_facing) {
+            self.occupants.get_mut(&dpos).map(|o| (dpos, o))
+        } else {
+            None
+        }
+    }
+
     pub fn add_occ(&mut self, pos: BoardPosition, occ: OccupantType) {
         self.occupants.insert(pos, occ);
     }
@@ -123,7 +178,7 @@ pub struct BoardTile;
 #[derive(Debug)]
 pub enum FoodType {
     Meal,
-    DeadMeat,
+    DeadMeat(u32),
 }
 
 #[derive(Bundle)]
@@ -156,7 +211,7 @@ pub fn place_food_at(
 ) -> Result<(), Box<dyn Error>> {
     let (energy_value, food_color) = match food_type {
         FoodType::Meal => (default_food_value(), Color::rgb(1., 0.5, 0.)),
-        FoodType::DeadMeat => (default_player_food_value(), Color::rgb(0., 0., 0.)),
+        FoodType::DeadMeat(energy_val) => (energy_val, Color::rgb(0., 0., 0.)),
     };
 
     let mesh = meshes.add(Circle {
@@ -194,4 +249,26 @@ pub fn place_food_at(
         "place_food_at(): no entry on occupant at {:?}...",
         &pos
     )))
+}
+
+pub fn get_los_tiles(
+    scanner_pos: &BoardPosition,
+    scanner_facing: &FacingDirection,
+    scanner_los: &LineOfSight,
+    board: &Board,
+) -> Vec<BoardPosition> {
+    let mut los_tiles = vec![];
+
+    let mut pos_index = *scanner_pos;
+    for _ in 0..scanner_los.length {
+        match board.looking_at(&pos_index, scanner_facing) {
+            Some((pos, _)) => {
+                los_tiles.push(pos);
+                pos_index = pos;
+            }
+            None => break,
+        }
+    }
+
+    los_tiles
 }

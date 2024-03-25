@@ -1,5 +1,7 @@
 use crate::simulation::players::*;
 
+use bevy::render::color::Color;
+
 // UTILITIES
 
 pub fn percent(value: u8) -> f32 {
@@ -41,9 +43,6 @@ pub fn default_energy_max() -> u32 {
 pub fn default_food_value() -> u32 {
     TURNS_PER_GEN / 3 * 2
 }
-pub fn default_player_food_value() -> u32 {
-    default_food_value() / 2 + 1
-}
 
 // ACTIONS
 
@@ -51,9 +50,17 @@ pub fn action_cost(action_type: &PlayerActionType) -> u32 {
     match *action_type {
         PlayerActionType::Idle => 1,
         PlayerActionType::Turn(_) => 1,
+        PlayerActionType::ScanLOS => 1,
         PlayerActionType::Eat => 2,
         PlayerActionType::Move => 3,
         PlayerActionType::Disengage => DISENGAGE_LENGTH * 7,
         PlayerActionType::Kill => 40,
     }
 }
+
+pub const DISENGAGE_LENGTH: u32 = 3;
+
+// LINE OF SIGHT MECHANICS
+
+pub const DEFAULT_LOS_LENGTH: u32 = 3;
+pub const DEFAULT_COLOR_ON_LOS_DETECT: Color = Color::rgb(0.8, 1.0, 1.0);

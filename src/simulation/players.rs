@@ -10,7 +10,7 @@ pub struct Player;
 #[derive(Component, Debug)]
 pub struct Food;
 
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FacingDirection {
     Up,
     Left,
@@ -25,6 +25,8 @@ pub enum PlayerActionType {
     Turn(FacingDirection),
     Eat,
     Kill,
+    ScanLOS,
+    Disengage,
 }
 
 #[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]
@@ -57,6 +59,17 @@ impl Vitals {
             status: PlayerStatus::Alive,
         }
     }
+}
+
+#[derive(Component, Debug, Clone, Copy)]
+pub enum LOSType {
+    StraightLine,
+}
+
+#[derive(Component, Debug, Clone, Copy)]
+pub struct LineOfSight {
+    pub los_type: LOSType,
+    pub length: u32,
 }
 
 pub fn position_after_turn(
