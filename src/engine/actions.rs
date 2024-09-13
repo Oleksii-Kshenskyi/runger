@@ -46,7 +46,6 @@ pub struct ScanLOSEvent {
 pub struct LOSReportEvent {
     pub scanner_id: Entity,
     pub scanned_type: OccupantType,
-    pub scanned_pos: BoardPosition,
 }
 
 #[derive(Event, Debug)]
@@ -83,8 +82,8 @@ fn move_player(
     };
 
     let mut maybe_move_data: Option<(BoardPosition, OccupantType)> = None;
-    if let Some((new_pos, new_tile_occ)) = movement_fn(board, &mover_pos, &mover_facing) {
-        if let Some(old_tile_occ) = board.occ_at(&mover_pos) {
+    if let Some((new_pos, new_tile_occ)) = movement_fn(board, mover_pos, mover_facing) {
+        if let Some(old_tile_occ) = board.occ_at(mover_pos) {
             if *new_tile_occ == OccupantType::Empty {
                 // get data necessary for the move via immutable queries
                 maybe_move_data = Some((new_pos, *old_tile_occ));
@@ -93,7 +92,7 @@ fn move_player(
     }
 
     if maybe_move_data.is_some() {
-        if let Some(old_occ_mut) = board.occ_at_mut(&mover_pos) {
+        if let Some(old_occ_mut) = board.occ_at_mut(mover_pos) {
             *old_occ_mut = OccupantType::Empty; // deoccupy the old tile if the move is valid
         }
     }
@@ -103,7 +102,7 @@ fn move_player(
         if let Ok((mut mover_pos, mut last_action, mut mover_transform)) =
             player_query.get_mut(mover_id)
         {
-            if let Some((_, new_tile_occ)) = movement_fn_mut(board, &mover_pos, &mover_facing) {
+            if let Some((_, new_tile_occ)) = movement_fn_mut(board, &mover_pos, mover_facing) {
                 // move player occupancy to the new position
                 *new_tile_occ = old_occ_clone;
 
@@ -204,7 +203,7 @@ fn update_vitals_listener(
                 .saturating_sub(action_cost(last_action));
             if hungerer_vitals.energy.value == 0 {
                 hungerer_vitals.status = PlayerStatus::DedPepega;
-                *hungerer_color = materials.add(Color::rgb(0., 0., 0.));
+                *hungerer_color = materials.add(Color::srgb(0., 0., 0.));
             }
         }
     }
@@ -344,7 +343,6 @@ fn player_scan_los_listener(
                 if let Some(occ) = board.occ_at(&pos) {
                     if *occ != OccupantType::Empty {
                         losreport_events.send(LOSReportEvent {
-                            scanned_pos: pos,
                             scanned_type: *occ,
                             scanner_id: event.scanner_id,
                         });
@@ -368,7 +366,7 @@ fn player_los_report_listener(
 ) {
     for event in los_report_events.read() {
         if let Ok(mut scanner_color) = color_query.get_mut(event.scanner_id) {
-            let current_color = materials.get(scanner_color.clone()).unwrap().color;
+            let current_color = materials.get(scanner_color.as_ref()).unwrap().color;
             if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
                 restore_colors_event.send(RestoreColorsEvent {
                     entity_id: event.scanner_id,
@@ -380,7 +378,7 @@ fn player_los_report_listener(
         match event.scanned_type {
             OccupantType::Player(scanned_id) => {
                 if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
-                    let current_color = materials.get(scanned_color.clone()).unwrap().color;
+                    let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
                     if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
                         restore_colors_event.send(RestoreColorsEvent {
                             entity_id: scanned_id,
@@ -392,7 +390,7 @@ fn player_los_report_listener(
             }
             OccupantType::Food(scanned_id) => {
                 if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
-                    let current_color = materials.get(scanned_color.clone()).unwrap().color;
+                    let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
                     if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
                         restore_colors_event.send(RestoreColorsEvent {
                             entity_id: scanned_id,

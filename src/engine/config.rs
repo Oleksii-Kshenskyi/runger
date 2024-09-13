@@ -1,6 +1,5 @@
 use crate::simulation::players::*;
-
-use bevy::render::color::Color;
+use bevy::prelude::Color;
 
 // UTILITIES
 
@@ -63,4 +62,4 @@ pub const DISENGAGE_LENGTH: u32 = 3;
 // LINE OF SIGHT MECHANICS
 
 pub const DEFAULT_LOS_LENGTH: u32 = 3;
-pub const DEFAULT_COLOR_ON_LOS_DETECT: Color = Color::rgb(0.8, 1.0, 1.0);
+pub const DEFAULT_COLOR_ON_LOS_DETECT: Color = Color::srgb(0.8, 1.0, 1.0);

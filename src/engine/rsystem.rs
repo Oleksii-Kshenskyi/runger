@@ -9,7 +9,7 @@ pub struct BaseSystemPlugin;
 
 impl Plugin for BaseSystemPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ClearColor(Color::rgb_u8(25, 25, 25)))
+        app.insert_resource(ClearColor(Color::srgb_u8(25, 25, 25)))
             .add_systems(Startup, camera_setup)
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
