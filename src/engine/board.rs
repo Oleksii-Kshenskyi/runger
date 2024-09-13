@@ -36,7 +36,7 @@ fn spawn_board(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut board: ResMut<Board>,
 ) {
-    let tile_color = Color::rgb(0.5, 0.5, 0.5);
+    let tile_color = Color::srgb(0.5, 0.5, 0.5);
     materials.add(tile_color);
 
     for x in 0..DEFAULT_GRID_SIZE {
@@ -86,14 +86,13 @@ fn spawn_players(
                                 board_pos: random_pos,
                                 is_facing: FacingDirection::Right,
                                 los: LineOfSight {
-                                    los_type: LOSType::StraightLine,
                                     length: DEFAULT_LOS_LENGTH,
                                 },
                                 last_action_taken: PlayerActionType::Idle,
                                 vitals: Vitals::new(random_energy_start()),
                                 sprite: MaterialMesh2dBundle {
                                     mesh: triangle,
-                                    material: materials.add(Color::rgb(1.0, 0.0, 0.0)),
+                                    material: materials.add(Color::srgb(1.0, 0.0, 0.0)),
                                     transform: Transform::from_xyz(
                                         grid_to_world(random_pos.x),
                                         grid_to_world(random_pos.y),
