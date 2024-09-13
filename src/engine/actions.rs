@@ -239,15 +239,16 @@ fn player_kill_listener(
                         if victim_vitals.status == PlayerStatus::Alive {
                             *victim_tile_occ = OccupantType::Empty;
                             commands.entity(victim_id).despawn_recursive();
-                            place_food_at(
+                            if let Err(e) = place_food_at(
                                 &mut commands,
                                 *victim_pos,
                                 FoodType::DeadMeat(victim_vitals.energy.value),
                                 &mut board,
                                 &mut materials,
                                 &mut meshes,
-                            )
-                            .unwrap();
+                            ) {
+                                warn!("Tried to place a dead body, but failed: `{}`", e);
+                            }
                             kill_succeeded = true;
                         }
                     }
