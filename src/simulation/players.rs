@@ -62,13 +62,7 @@ impl Vitals {
 }
 
 #[derive(Component, Debug, Clone, Copy)]
-pub enum LOSType {
-    StraightLine,
-}
-
-#[derive(Component, Debug, Clone, Copy)]
 pub struct LineOfSight {
-    pub los_type: LOSType,
     pub length: u32,
 }
 

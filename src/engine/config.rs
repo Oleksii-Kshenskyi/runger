@@ -1,6 +1,5 @@
 use crate::simulation::players::*;
-
-use bevy::render::color::Color;
+use bevy::prelude::Color;
 
 // UTILITIES
 
@@ -25,10 +24,10 @@ pub fn default_player_count() -> u32 {
     ((DEFAULT_GRID_SIZE * DEFAULT_GRID_SIZE) as f32 * percent(30)) as u32
 }
 
-pub const DEFAULT_PLAYER_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
-pub const DEFAULT_FOOD_COLOR: Color = Color::rgb(1., 0.5, 0.);
-pub const DEAD_MEAT_COLOR: Color = Color::rgb(0., 0., 0.);
-pub const DEFAULT_COLOR_ON_LOS_DETECT: Color = Color::rgb(0.8, 1.0, 1.0);
+pub const DEFAULT_PLAYER_COLOR: Color = Color::srgb(1.0, 0.0, 0.0);
+pub const DEFAULT_FOOD_COLOR: Color = Color::srgb(1., 0.5, 0.);
+pub const DEAD_MEAT_COLOR: Color = Color::srgb(0., 0., 0.);
+pub const DEFAULT_COLOR_ON_LOS_DETECT: Color = Color::srgb(0.8, 1.0, 1.0);
 
 // SIMULATION
 
