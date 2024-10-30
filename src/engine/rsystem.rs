@@ -14,7 +14,8 @@ impl Plugin for BaseSystemPlugin {
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Runger: The Hunger Games simulation".to_string(),
-                    resolution: WindowResolution::new(1280., 720.).with_scale_factor_override(1.0),
+                    resolution: WindowResolution::new(1920., 1080.).with_scale_factor_override(1.0),
+                    position: WindowPosition::Centered(MonitorSelection::Primary),
                     present_mode: PresentMode::Fifo,
                     ..default()
                 }),

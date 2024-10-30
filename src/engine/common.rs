@@ -82,6 +82,8 @@ impl Board {
                 if let Some(occ) = self.occ_at(&new_pos) {
                     if *occ == OccupantType::Empty {
                         cur_pos = new_pos;
+                    } else {
+                        break;
                     }
                 }
             }
@@ -210,17 +212,20 @@ pub fn place_food_at(
     meshes: &mut ResMut<Assets<Mesh>>,
 ) -> Result<(), Box<dyn Error>> {
     let (energy_value, food_color) = match food_type {
-        FoodType::Meal => (default_food_value(), Color::srgb(1., 0.5, 0.)),
-        FoodType::DeadMeat(energy_val) => (energy_val, Color::srgb(0., 0., 0.)),
+        FoodType::Meal => (default_food_value(), DEFAULT_FOOD_COLOR),
+        FoodType::DeadMeat(energy_val) => (energy_val, DEAD_MEAT_COLOR),
     };
 
-    let mesh = meshes.add(Circle {
-        radius: default_entity_size() / 2.,
-    });
     if let Some(occupant) = board.occ_at_mut(&pos) {
         if *occupant != OccupantType::Empty {
-            return Err(rerror("Trying to place food on a non-empty tile!"));
+            return Err(rerror(&format!(
+                "Trying to place food on a non-empty tile: Occupant at `{:?}` is `{:?}`!",
+                &pos, occupant
+            )));
         };
+        let mesh = meshes.add(Circle {
+            radius: default_entity_size() / 2.,
+        });
         *occupant = OccupantType::Food(
             commands
                 .spawn((

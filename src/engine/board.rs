@@ -92,7 +92,7 @@ fn spawn_players(
                                 vitals: Vitals::new(random_energy_start()),
                                 sprite: MaterialMesh2dBundle {
                                     mesh: triangle,
-                                    material: materials.add(Color::srgb(1.0, 0.0, 0.0)),
+                                    material: materials.add(DEFAULT_PLAYER_COLOR),
                                     transform: Transform::from_xyz(
                                         grid_to_world(random_pos.x),
                                         grid_to_world(random_pos.y),
