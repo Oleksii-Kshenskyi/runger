@@ -21,12 +21,13 @@ pub enum FacingDirection {
 #[derive(Component, Debug)]
 pub enum PlayerActionType {
     Idle,
-    Move,
+    MoveForward,
+    #[allow(dead_code)]
+    MoveBackwards,
     Turn(FacingDirection),
     Eat,
     Kill,
     ScanLOS,
-    Disengage,
 }
 
 #[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]

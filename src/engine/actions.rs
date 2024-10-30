@@ -117,7 +117,7 @@ fn move_player(
                 };
 
                 // log last action taken for action cost calculation
-                *last_action = PlayerActionType::Move;
+                *last_action = PlayerActionType::MoveForward;
                 move_succeeded = true;
             }
         }
@@ -148,7 +148,7 @@ fn player_move_listener(
         );
         if let Ok((_, mut last_action, _)) = player_query.get_mut(event.mover_id) {
             match ok {
-                true => *last_action = PlayerActionType::Move,
+                true => *last_action = PlayerActionType::MoveForward,
                 false => *last_action = PlayerActionType::Idle,
             }
         }
@@ -289,35 +289,6 @@ fn player_turn_listener(
     }
 }
 
-fn player_disengage_listener(
-    mut disengage_events: EventReader<MoveEvent>,
-    mut player_query: Query<
-        (&mut BoardPosition, &mut PlayerActionType, &mut Transform),
-        (With<Player>, Without<BoardTile>),
-    >,
-    mut board: ResMut<Board>,
-) {
-    for event in disengage_events.read() {
-        if event.movement_direction != FacingDirection::Down {
-            continue;
-        }
-        let ok = move_player(
-            &mut board,
-            event.mover_id,
-            &event.mover_pos,
-            &event.mover_facing,
-            &FacingDirection::Down,
-            &mut player_query,
-        );
-        if let Ok((_, mut last_action, _)) = player_query.get_mut(event.mover_id) {
-            match ok {
-                true => *last_action = PlayerActionType::Disengage,
-                false => *last_action = PlayerActionType::Idle,
-            }
-        }
-    }
-}
-
 /// What should this system do?
 /// It should scan line of sight of the current player and determine if
 /// there is something within the line of sight.
@@ -439,7 +410,7 @@ fn advance_players(
         }
         match random_player_action() {
             PlayerActionType::Idle => (),
-            PlayerActionType::Move => {
+            PlayerActionType::MoveForward => {
                 move_event.send(MoveEvent {
                     mover_id: player_id,
                     mover_pos: *player_pos,
@@ -479,7 +450,7 @@ fn advance_players(
                     scanner_facing: *direction,
                 });
             }
-            PlayerActionType::Disengage => {
+            PlayerActionType::MoveBackwards => {
                 move_event.send(MoveEvent {
                     mover_id: player_id,
                     mover_facing: *direction,
@@ -518,7 +489,6 @@ impl Plugin for PlayerActionPlugin {
                 Update,
                 (
                     player_turn_listener,
-                    player_disengage_listener,
                     player_move_listener,
                     player_eat_listener,
                     player_kill_listener,

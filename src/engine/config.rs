@@ -56,8 +56,8 @@ pub fn action_cost(action_type: &PlayerActionType) -> u32 {
         PlayerActionType::Turn(_) => 1,
         PlayerActionType::ScanLOS => 1,
         PlayerActionType::Eat => 2,
-        PlayerActionType::Move => 3,
-        PlayerActionType::Disengage => DISENGAGE_LENGTH * 7,
+        PlayerActionType::MoveForward => 3,
+        PlayerActionType::MoveBackwards => 3,
         PlayerActionType::Kill => 40,
     }
 }
