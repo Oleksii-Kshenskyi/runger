@@ -46,6 +46,7 @@ pub enum OccupantType {
     Empty,
     Player(Entity),
     Food(Entity),
+    Wall(Entity),
 }
 
 #[derive(Resource)]
@@ -188,6 +189,12 @@ pub struct FoodBundle {
     pub board_pos: BoardPosition,
     pub energy_value: Energy,
     pub sprite: MaterialMesh2dBundle<ColorMaterial>,
+}
+
+#[derive(Bundle)]
+pub struct WallBundle {
+    pub board_pos: BoardPosition,
+    pub sprite: SpriteBundle,
 }
 
 #[derive(Default, Clone, Copy, States, Debug, Hash, PartialEq, Eq)]
