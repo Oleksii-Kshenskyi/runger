@@ -55,12 +55,15 @@ pub struct Board {
 }
 
 impl Board {
-    fn looking_pos(player_pos: &BoardPosition, is_facing: &FacingDirection) -> (i32, i32) {
+    fn looking_pos(player_pos: &BoardPosition, is_facing: &FacingDirection, shift: Option<u32>) -> (i32, i32) {
+        let true_shift: i32 = if let Some(s) = shift {
+            s as i32 + 1
+        } else { 1 };
         match (&player_pos, is_facing) {
-            (BoardPosition { x, y }, FacingDirection::Up) => (*x as i32, (*y as i32 + 1)),
-            (BoardPosition { x, y }, FacingDirection::Right) => ((*x as i32 + 1), *y as i32),
-            (BoardPosition { x, y }, FacingDirection::Down) => (*x as i32, (*y as i32 - 1)),
-            (BoardPosition { x, y }, FacingDirection::Left) => ((*x as i32 - 1), *y as i32),
+            (BoardPosition { x, y }, FacingDirection::Up) => (*x as i32, (*y as i32 + true_shift)),
+            (BoardPosition { x, y }, FacingDirection::Right) => ((*x as i32 + true_shift), *y as i32),
+            (BoardPosition { x, y }, FacingDirection::Down) => (*x as i32, (*y as i32 - true_shift)),
+            (BoardPosition { x, y }, FacingDirection::Left) => ((*x as i32 - true_shift), *y as i32),
         }
     }
 
@@ -76,8 +79,8 @@ impl Board {
             FacingDirection::Down => FacingDirection::Up,
         };
         let mut cur_pos = *pos;
-        for _ in 1..=DISENGAGE_LENGTH {
-            let test_pos = Self::looking_pos(&cur_pos, &disengage_direction);
+        for distance in 0..DISENGAGE_LENGTH {
+            let test_pos = Self::looking_pos(&cur_pos, &disengage_direction, Some(distance));
             if Self::pos_within_bounds(&test_pos) {
                 let new_pos = BoardPosition::new(test_pos.0 as u32, test_pos.1 as u32);
                 if let Some(occ) = self.occ_at(&new_pos) {
@@ -122,8 +125,9 @@ impl Board {
         &self,
         looker_pos: &BoardPosition,
         looker_facing: &FacingDirection,
+        distance: Option<u32>,
     ) -> Option<(BoardPosition, &OccupantType)> {
-        let looking_pos = Board::looking_pos(looker_pos, looker_facing);
+        let looking_pos = Board::looking_pos(looker_pos, looker_facing, distance);
         if Self::pos_within_bounds(&looking_pos) {
             let pos = BoardPosition::new(looking_pos.0 as u32, looking_pos.1 as u32);
             self.occupants.get(&pos).map(|o| (pos, o))
@@ -136,8 +140,9 @@ impl Board {
         &mut self,
         looker_pos: &BoardPosition,
         looker_facing: &FacingDirection,
+        distance: Option<u32>,
     ) -> Option<(BoardPosition, &mut OccupantType)> {
-        let looking_pos = Board::looking_pos(looker_pos, looker_facing);
+        let looking_pos = Board::looking_pos(looker_pos, looker_facing, distance);
         if Self::pos_within_bounds(&looking_pos) {
             let pos = BoardPosition::new(looking_pos.0 as u32, looking_pos.1 as u32);
             self.occupants.get_mut(&pos).map(|o| (pos, o))
@@ -150,6 +155,7 @@ impl Board {
         &self,
         coward_pos: &BoardPosition,
         coward_facing: &FacingDirection,
+        _: Option<u32>
     ) -> Option<(BoardPosition, &OccupantType)> {
         if let Some(dpos) = self.max_disengage_position(coward_pos, coward_facing) {
             self.occupants.get(&dpos).map(|o| (dpos, o))
@@ -162,6 +168,7 @@ impl Board {
         &mut self,
         coward_pos: &BoardPosition,
         coward_facing: &FacingDirection,
+        _: Option<u32>
     ) -> Option<(BoardPosition, &mut OccupantType)> {
         if let Some(dpos) = self.max_disengage_position(coward_pos, coward_facing) {
             self.occupants.get_mut(&dpos).map(|o| (dpos, o))
@@ -272,8 +279,8 @@ pub fn get_los_tiles(
     let mut los_tiles = vec![];
 
     let mut pos_index = *scanner_pos;
-    for _ in 0..scanner_los.length {
-        match board.looking_at(&pos_index, scanner_facing) {
+    for shift in 0..scanner_los.length {
+        match board.looking_at(&pos_index, scanner_facing, Some(shift)) {
             Some((pos, _)) => {
                 los_tiles.push(pos);
                 pos_index = pos;

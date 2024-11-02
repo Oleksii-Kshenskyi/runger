@@ -89,7 +89,7 @@ fn move_player(
     };
 
     let mut maybe_move_data: Option<(BoardPosition, OccupantType)> = None;
-    if let Some((new_pos, new_tile_occ)) = movement_fn(board, mover_pos, mover_facing) {
+    if let Some((new_pos, new_tile_occ)) = movement_fn(board, mover_pos, mover_facing, None) {
         if let Some(old_tile_occ) = board.occ_at(mover_pos) {
             if *new_tile_occ == OccupantType::Empty {
                 // get data necessary for the move via immutable queries
@@ -109,7 +109,7 @@ fn move_player(
         if let Ok((mut mover_pos, mut last_action, mut mover_transform)) =
             player_query.get_mut(mover_id)
         {
-            if let Some((_, new_tile_occ)) = movement_fn_mut(board, &mover_pos, mover_facing) {
+            if let Some((_, new_tile_occ)) = movement_fn_mut(board, &mover_pos, mover_facing, None) {
                 // move player occupancy to the new position
                 *new_tile_occ = old_occ_clone;
 
@@ -177,7 +177,7 @@ fn player_eat_listener(
             player_query.get_mut(event.gorger_id)
         {
             *last_action = PlayerActionType::Idle;
-            if let Some((_, occ)) = board.looking_at_mut(gorger_pos, &event.gorger_facing) {
+            if let Some((_, occ)) = board.looking_at_mut(gorger_pos, &event.gorger_facing, None) {
                 if let OccupantType::Food(food_id) = *occ {
                     if let Ok(food_energy) = food_query.get(food_id) {
                         gorger_vitals.energy.value += food_energy.value;
@@ -237,7 +237,7 @@ fn player_kill_listener(
         let mut kill_succeeded = false;
         if let Ok((killer_pos, _, _, _, _)) = player_query.get(event.killer_id) {
             if let Some((_, victim_tile_occ)) =
-                board.looking_at_mut(killer_pos, &event.killer_facing)
+                board.looking_at_mut(killer_pos, &event.killer_facing, None)
             {
                 if let OccupantType::Player(victim_id) = *victim_tile_occ {
                     if let Ok((victim_pos, victim_vitals, _, _, _)) =
@@ -309,7 +309,7 @@ fn player_build_wall_listener(
         let mut maybe_empty: Option<BoardPosition> = None;
         let mut last_action_type: PlayerActionType = PlayerActionType::Idle;
         if let Ok((builder_facing, _, builder_pos)) = player_query.get(event.builder_id) {
-            if let Some((occ_pos, occ_type)) = board.looking_at(builder_pos, builder_facing) {
+            if let Some((occ_pos, occ_type)) = board.looking_at(builder_pos, builder_facing, None) {
                 maybe_empty = if *occ_type == OccupantType::Empty {
                     Some(occ_pos)
                 } else {
