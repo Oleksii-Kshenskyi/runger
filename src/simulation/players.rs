@@ -10,6 +10,9 @@ pub struct Player;
 #[derive(Component, Debug)]
 pub struct Food;
 
+#[derive(Component, Debug)]
+pub struct Wall;
+
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FacingDirection {
     Up,
@@ -28,6 +31,7 @@ pub enum PlayerActionType {
     Eat,
     Kill,
     ScanLOS,
+    BuildWall,
 }
 
 #[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]

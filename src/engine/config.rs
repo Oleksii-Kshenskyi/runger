@@ -27,6 +27,7 @@ pub fn default_player_count() -> u32 {
 pub const DEFAULT_PLAYER_COLOR: Color = Color::srgb(1.0, 0.0, 0.0);
 pub const DEFAULT_FOOD_COLOR: Color = Color::srgb(1., 0.5, 0.);
 pub const DEAD_MEAT_COLOR: Color = Color::srgb(0., 0., 0.);
+pub const DEFAULT_WALL_COLOR: Color = Color::srgb(0.4, 0.26, 0.13);
 pub const DEFAULT_COLOR_ON_LOS_DETECT: Color = Color::srgb(0.8, 1.0, 1.0);
 
 // SIMULATION
@@ -58,6 +59,7 @@ pub fn action_cost(action_type: &PlayerActionType) -> u32 {
         PlayerActionType::Eat => 2,
         PlayerActionType::MoveForward => 3,
         PlayerActionType::MoveBackwards => 3,
+        PlayerActionType::BuildWall => 20,
         PlayerActionType::Kill => 40,
     }
 }

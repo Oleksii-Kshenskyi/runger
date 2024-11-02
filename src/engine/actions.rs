@@ -7,7 +7,9 @@ use crate::engine::common::*;
 use crate::engine::random::random_player_action;
 use crate::simulation::players::*;
 
-use super::config::{action_cost, DEFAULT_COLOR_ON_LOS_DETECT};
+use super::config::{
+    action_cost, default_entity_size, DEFAULT_COLOR_ON_LOS_DETECT, DEFAULT_WALL_COLOR,
+};
 
 #[derive(Event, Debug)]
 pub struct KillEvent {
@@ -34,6 +36,11 @@ pub struct TurnEvent {
     pub turner_id: Entity,
     pub turner_facing: FacingDirection,
     pub turn_direction: FacingDirection,
+}
+
+#[derive(Event, Debug)]
+pub struct BuildWallEvent {
+    pub builder_id: Entity,
 }
 
 #[derive(Event, Debug)]
@@ -289,6 +296,67 @@ fn player_turn_listener(
     }
 }
 
+fn player_build_wall_listener(
+    mut build_wall_events: EventReader<BuildWallEvent>,
+    mut commands: Commands,
+    mut board: ResMut<Board>,
+    mut player_query: Query<
+        (&FacingDirection, &mut PlayerActionType, &BoardPosition),
+        (With<Player>, Without<BoardTile>),
+    >,
+) {
+    for event in build_wall_events.read() {
+        let mut maybe_empty: Option<BoardPosition> = None;
+        let mut last_action_type: PlayerActionType = PlayerActionType::Idle;
+        if let Ok((builder_facing, _, builder_pos)) = player_query.get(event.builder_id) {
+            if let Some((occ_pos, occ_type)) = board.looking_at(builder_pos, builder_facing) {
+                maybe_empty = if *occ_type == OccupantType::Empty {
+                    Some(occ_pos)
+                } else {
+                    None
+                }
+            }
+        }
+        if let Some(wall_pos) = maybe_empty {
+            if let Some(occ) = board.occ_at_mut(&wall_pos) {
+                *occ = OccupantType::Wall(
+                    commands
+                        .spawn((
+                            WallBundle {
+                                board_pos: wall_pos,
+                                sprite: SpriteBundle {
+                                    sprite: Sprite {
+                                        color: DEFAULT_WALL_COLOR,
+                                        custom_size: Some(Vec2::new(
+                                            default_entity_size(),
+                                            default_entity_size(),
+                                        )),
+                                        ..default()
+                                    },
+                                    transform: Transform::from_xyz(
+                                        grid_to_world(wall_pos.x),
+                                        grid_to_world(wall_pos.y),
+                                        0.1,
+                                    ),
+                                    ..Default::default()
+                                },
+                            },
+                            Wall,
+                        ))
+                        .id(),
+                );
+                last_action_type = PlayerActionType::BuildWall;
+            }
+        } else {
+            last_action_type = PlayerActionType::Idle;
+        }
+
+        if let Ok((_, mut last_action, _)) = player_query.get_mut(event.builder_id) {
+            *last_action = last_action_type;
+        }
+    }
+}
+
 /// What should this system do?
 /// It should scan line of sight of the current player and determine if
 /// there is something within the line of sight.
@@ -347,35 +415,24 @@ fn player_los_report_listener(
                 *scanner_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
             }
         }
-        match event.scanned_type {
-            OccupantType::Player(scanned_id) => {
-                if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
-                    let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
-                    if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
-                        restore_colors_event.send(RestoreColorsEvent {
-                            entity_id: scanned_id,
-                            old_color: current_color,
-                        });
-                        *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
-                    }
-                }
-            }
-            OccupantType::Food(scanned_id) => {
-                if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
-                    let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
-                    if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
-                        restore_colors_event.send(RestoreColorsEvent {
-                            entity_id: scanned_id,
-                            old_color: current_color,
-                        });
-                        *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
-                    }
-                }
-            }
+        let scanned_id = match event.scanned_type {
+            OccupantType::Player(player_id) => player_id,
+            OccupantType::Food(food_id) => food_id,
+            OccupantType::Wall(wall_id) => wall_id,
             err_occ => unreachable!(
                 "Changing color on LOS: this entity type should not be scanned: {:?}",
                 err_occ
             ),
+        };
+        if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
+            let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
+            if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
+                restore_colors_event.send(RestoreColorsEvent {
+                    entity_id: scanned_id,
+                    old_color: current_color,
+                });
+                *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
+            }
         }
     }
 }
@@ -398,6 +455,7 @@ fn advance_players(
     mut move_event: EventWriter<MoveEvent>,
     mut turn_event: EventWriter<TurnEvent>,
     mut los_event: EventWriter<ScanLOSEvent>,
+    mut build_wall_event: EventWriter<BuildWallEvent>,
     mut update_vitals_event: EventWriter<UpdateVitalsEvent>,
     mut player_query: Query<
         (Entity, &BoardPosition, &mut FacingDirection, &Vitals),
@@ -458,6 +516,11 @@ fn advance_players(
                     movement_direction: FacingDirection::Down,
                 });
             }
+            PlayerActionType::BuildWall => {
+                build_wall_event.send(BuildWallEvent {
+                    builder_id: player_id,
+                });
+            }
             act => unreachable!(
                 "Incorrect action type while trying to advance players: {:#?}",
                 act
@@ -477,6 +540,7 @@ impl Plugin for PlayerActionPlugin {
             .add_event::<EatEvent>()
             .add_event::<MoveEvent>()
             .add_event::<TurnEvent>()
+            .add_event::<BuildWallEvent>()
             .add_event::<ScanLOSEvent>()
             .add_event::<LOSReportEvent>()
             .add_event::<UpdateVitalsEvent>()
@@ -492,6 +556,7 @@ impl Plugin for PlayerActionPlugin {
                     player_move_listener,
                     player_eat_listener,
                     player_kill_listener,
+                    player_build_wall_listener,
                     player_scan_los_listener,
                     player_los_report_listener,
                 )
