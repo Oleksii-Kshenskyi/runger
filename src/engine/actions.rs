@@ -415,47 +415,24 @@ fn player_los_report_listener(
                 *scanner_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
             }
         }
-        match event.scanned_type {
-            OccupantType::Player(scanned_id) => {
-                if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
-                    let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
-                    if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
-                        restore_colors_event.send(RestoreColorsEvent {
-                            entity_id: scanned_id,
-                            old_color: current_color,
-                        });
-                        *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
-                    }
-                }
-            }
-            OccupantType::Food(scanned_id) => {
-                if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
-                    let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
-                    if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
-                        restore_colors_event.send(RestoreColorsEvent {
-                            entity_id: scanned_id,
-                            old_color: current_color,
-                        });
-                        *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
-                    }
-                }
-            }
-            OccupantType::Wall(scanned_id) => {
-                if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
-                    let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
-                    if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
-                        restore_colors_event.send(RestoreColorsEvent {
-                            entity_id: scanned_id,
-                            old_color: current_color,
-                        });
-                        *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
-                    }
-                }
-            }
+        let scanned_id = match event.scanned_type {
+            OccupantType::Player(player_id) => player_id,
+            OccupantType::Food(food_id) => food_id,
+            OccupantType::Wall(wall_id) => wall_id,
             err_occ => unreachable!(
                 "Changing color on LOS: this entity type should not be scanned: {:?}",
                 err_occ
             ),
+        };
+        if let Ok(mut scanned_color) = color_query.get_mut(scanned_id) {
+            let current_color = materials.get(scanned_color.as_ref()).unwrap().color;
+            if current_color != DEFAULT_COLOR_ON_LOS_DETECT {
+                restore_colors_event.send(RestoreColorsEvent {
+                    entity_id: scanned_id,
+                    old_color: current_color,
+                });
+                *scanned_color = materials.add(DEFAULT_COLOR_ON_LOS_DETECT);
+            }
         }
     }
 }
